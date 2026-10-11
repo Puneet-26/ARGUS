@@ -26,6 +26,14 @@ app.use(
   }),
 );
 app.use(cors());
+app.use(
+  "/api/image/process",
+  express.raw({ type: "multipart/form-data", limit: "10mb" }),
+);
+app.use(
+  "/api/image/inspect",
+  express.raw({ type: "multipart/form-data", limit: "10mb" }),
+);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 

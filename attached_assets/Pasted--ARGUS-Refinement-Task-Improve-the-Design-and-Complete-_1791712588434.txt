@@ -1,0 +1,220 @@
+# ARGUS Refinement Task: Improve the Design and Complete All Four OpenCV Levels
+
+You have already built an initial version of ARGUS: The Last Chai. The current result copies the reference website too closely and does not sufficiently develop the investigation experience.
+
+Your task is to **improve the existing application**, not rebuild it from scratch.
+
+Inspect the current implementation, identify what is already working, and then make the following changes directly in the project.
+
+## 1. Redesign the interface, do not copy the reference
+
+Preserve the forensic investigation atmosphere, but establish a distinct visual identity for ARGUS.
+
+Keep:
+- Dark charcoal and near-black backgrounds.
+- Off-white typography.
+- Muted red for critical actions.
+- Amber for evidence and timestamps.
+- Monospaced labels for technical metadata.
+- Thin borders and restrained visual effects.
+
+Change:
+- Improve spacing, alignment, typography hierarchy, and proportions.
+- Use more varied layouts instead of repeating the same rectangular panel everywhere.
+- Make the dashboard more visual and less text-heavy.
+- Give CCTV images, processed results, and evidence artifacts greater prominence.
+- Make the investigation workspace feel like a specialised computer vision laboratory.
+- Improve the distinction between navigation, evidence, controls, and results.
+- Reduce unnecessary scrolling and prevent narrow, cramped content columns.
+- Add subtle transitions when opening evidence, changing processing modes, and completing a level.
+- Use a consistent icon set rather than emoji or arbitrary symbols.
+
+**Strict colour rule:** No green backgrounds, green gradients, green cards, or green decorative surfaces. Use charcoal, slate, muted red, amber, and restrained steel blue.
+
+Do not add clutter, excessive animations, huge empty sections, random stock images, unnecessary charts, or decorative elements that compete with the evidence.
+
+## 2. Improve the dashboard
+
+Create a distinctive case overview that includes:
+- ARGUS case identity and current investigation status.
+- A prominent CCTV evidence preview.
+- A concise incident briefing.
+- Four visually distinct investigation stages.
+- Progress through the investigation.
+- A timeline of known events.
+- Persons of interest, presented in a readable layout.
+- A clear Continue Investigation action.
+
+Avoid displaying every statistic and every piece of narrative on the dashboard. Put detailed information in the relevant investigation pages.
+
+The dashboard must reflect actual application state. Do not hardcode progress indicators that never change.
+
+## 3. Complete all four OpenCV levels
+
+All four levels must have their own functional workspaces, evidence assets, processing controls, and completion criteria. Do not implement Level 1 and leave the remaining levels as placeholders.
+
+### Level 1: Eyes Online
+
+**Objective:** Recover the timestamp and useful details from corrupted corridor CCTV footage.
+
+Implement:
+- Original and processed image comparison.
+- Grayscale conversion.
+- Brightness and contrast adjustment.
+- Histogram equalisation and CLAHE.
+- Gaussian blur.
+- Binary and adaptive thresholding.
+- Cropping and resizing.
+- Processing history.
+- Reset and save-evidence actions.
+
+Use real OpenCV processing through the Python backend. Show the actual result of each operation.
+
+Completion requires the participant to inspect the image and recover the intended timestamp, 23:42, through the exercise. Do not display the answer automatically before the required analysis.
+
+### Level 2: The Missing Clue
+
+**Objective:** Investigate the laboratory desk and identify changes between relevant pieces of evidence.
+
+Implement:
+- A dedicated desk evidence viewer.
+- Two-image scene comparison.
+- Absolute image difference using `cv2.absdiff()`.
+- Thresholding and contour extraction to highlight changed regions.
+- A way to inspect candidate objects.
+- A findings panel explaining what changed and what remains uncertain.
+- A save-evidence action.
+
+If a real YOLO model and weights are available, optionally add object detection with bounding boxes, labels, and confidence values. Do not make YOLO a mandatory dependency for the basic exercise.
+
+Provide the required evidence images. The participant must be able to compare them and identify a relevant discrepancy.
+
+### Level 3: The Red Bag
+
+**Objective:** Isolate a suspicious red bag using colour segmentation.
+
+Implement:
+- Original image viewer.
+- BGR-to-HSV conversion.
+- Adjustable hue, saturation, and value thresholds.
+- Binary mask generated using `cv2.inRange()`.
+- Optional morphological opening and closing.
+- Contour detection and bounding rectangles.
+- Original, mask, and segmented-result views.
+- Parameter reset and save-finding controls.
+
+Changing the HSV thresholds must genuinely change the processed result.
+
+The exercise should demonstrate how colour segmentation identifies candidate regions. Do not claim it can establish the bag's owner or the identity of its carrier.
+
+### Level 4: Follow the Trail
+
+**Objective:** Analyse a corridor sequence to reconstruct movement.
+
+Implement:
+- A supplied corridor video or prepared frame sequence.
+- Play, pause, and frame navigation.
+- A visible frame index and timestamp.
+- Frame differencing.
+- Motion thresholding and contour-based movement candidates.
+- Centroid tracking across frames where practical.
+- Entry/exit-line crossing detection.
+- A chronological event log.
+- A way to save the observed movement evidence.
+
+Use real processing on the supplied video or frames. If a feature requires additional dependencies, provide a clearly labelled fallback rather than pretending the feature works.
+
+Movement detection must not be presented as reliable personal identification.
+
+## 4. Give each level a distinct layout
+
+Do not reuse the same generic page template with only a different title.
+
+Use these layout directions:
+
+- **Level 1:** Large image comparison workspace with processing controls grouped into collapsible or tabbed sections.
+- **Level 2:** Side-by-side evidence comparison with highlighted differences and an inspection panel.
+- **Level 3:** Three-part workspace showing the original image, binary mask, and segmented output, with HSV controls nearby.
+- **Level 4:** Video or frame-sequence viewer with timeline, movement overlay, and event log.
+
+Maintain consistent typography, colours, navigation, and controls across all four pages.
+
+## 5. Implement actual evidence progression
+
+The investigation must behave like a connected experience.
+
+- Completing Level 1 unlocks Level 2.
+- Completing Level 2 unlocks Level 3.
+- Completing Level 3 unlocks Level 4.
+- Completing Level 4 unlocks the final accusation.
+- Discovered evidence appears in the shared Evidence Notebook.
+- The dashboard updates when levels are completed.
+- Progress persists after reloading the page.
+- Participants can revisit completed levels without losing findings.
+- A level must not be marked complete merely because the user opened it.
+
+Each level should have a clear objective, a concise explanation of the OpenCV concept, a hands-on exercise, and a completion condition.
+
+## 6. Evidence Notebook and Final Accusation
+
+Improve the evidence notebook so that every finding records:
+- Evidence identifier.
+- Source level.
+- Source asset.
+- Operation or method used, where relevant.
+- Observation.
+- Limitations of the observation.
+
+The final accusation page must use the evidence actually collected. Allow the participant to select a suspect and explain the conclusion.
+
+Validate the submission against a configurable fictional case solution. Provide feedback explaining which evidence supports or contradicts the submitted claims.
+
+Keep object-detection outputs, movement observations, and fictional system logs separate. A detected red object does not establish ownership, and a movement candidate does not establish identity.
+
+## 7. OpenCV and backend compatibility
+
+Retain the React, TypeScript, and Vite frontend and the Python FastAPI/OpenCV backend if these are already implemented.
+
+- Reuse the existing API and processing modules where they work.
+- Connect every processing control to a real backend operation.
+- Show clear loading, success, and error states.
+- Add a backend health indicator.
+- Validate uploaded images, numerical parameters, and video inputs.
+- Do not use browser CSS filters as a substitute for actual OpenCV operations.
+- Do not fabricate YOLO detections or motion-analysis results.
+- Keep a CPU-compatible configuration for workshop laptops.
+- Ensure that missing optional model weights do not break the core exercises.
+
+Do not introduce unnecessary dependencies or require paid API keys for the basic workshop.
+
+## 8. Required implementation workflow
+
+Work in this order:
+
+1. Inspect the existing codebase and identify working functionality.
+2. Improve the global design system and dashboard.
+3. Finish and test Level 1 end to end.
+4. Implement and test Level 2.
+5. Implement and test Level 3.
+6. Implement and test Level 4.
+7. Connect evidence progression, notebook, and final accusation.
+8. Run the complete application and fix errors.
+
+Preserve existing useful code and assets. Do not replace working features merely to match a new design.
+
+## 9. Definition of done
+
+The task is complete only when:
+- The interface looks meaningfully improved rather than copied.
+- All four levels have distinct, usable layouts.
+- Every required OpenCV operation works against actual evidence assets.
+- The evidence notebook updates correctly.
+- Level progression and persistence work.
+- The final accusation can be submitted and evaluated.
+- There are no placeholder investigation pages or dead controls.
+- The application builds and runs without errors.
+- The design remains dark, uncluttered, and completely free of green backgrounds.
+
+Before finishing, report which features were executed and verified, which use prepared assets, and which optional capabilities require additional model weights or configuration.
+
+**Prioritise a complete, functional investigation over adding more visual decoration.**

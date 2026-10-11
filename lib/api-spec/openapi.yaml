@@ -10,27 +10,184 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: images
+    description: OpenCV image processing
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
-      summary: Health check
-      description: Returns server health status
+      summary: Check the OpenCV processing service
+      description: Returns whether the Python processing service is available and its OpenCV version.
       responses:
         "200":
-          description: Healthy
+          description: Processing service status
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /operations:
+    get:
+      operationId: listOperations
+      tags: [images]
+      summary: List available image operations
+      description: Returns the real OpenCV operations available in the Level 1 workshop.
+      responses:
+        "200":
+          description: Available operations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ImageOperation"
+  /image/process:
+    post:
+      operationId: processImage
+      tags: [images]
+      summary: Process an image with OpenCV
+      description: Applies one real OpenCV operation to an uploaded image and returns the processed PNG.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/ImageProcessingInput"
+      responses:
+        "200":
+          description: Processed image
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+        "400":
+          description: Invalid image, operation, or parameters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "413":
+          description: Image is too large
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /image/inspect:
+    post:
+      operationId: inspectImage
+      tags: [images]
+      summary: Inspect an uploaded image
+      description: Decodes the source image with OpenCV and reports its dimensions and channel layout.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/ImageInspectionInput"
+      responses:
+        "200":
+          description: Image properties measured by OpenCV
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImageInspection"
+        "400":
+          description: Invalid image
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "413":
+          description: Image is too large
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 components:
   schemas:
     HealthStatus:
       type: object
+      required: [status, pythonAvailable, opencvVersion]
       properties:
         status:
           type: string
-      required:
-        - status
+        pythonAvailable:
+          type: boolean
+        opencvVersion:
+          type: ["string", "null"]
+    ImageOperation:
+      type: object
+      required: [id, label, description, cvFunction]
+      properties:
+        id:
+          type: string
+          enum:
+            - grayscale
+            - brightness_contrast
+            - equalize_hist
+            - clahe
+            - gaussian_blur
+            - threshold
+            - adaptive_threshold
+            - resize
+            - crop
+        label:
+          type: string
+        description:
+          type: string
+        cvFunction:
+          type: string
+    ImageProcessingInput:
+      type: object
+      required: [image, operation, parameters]
+      properties:
+        image:
+          type: string
+          format: binary
+        operation:
+          type: string
+          enum:
+            - grayscale
+            - brightness_contrast
+            - equalize_hist
+            - clahe
+            - gaussian_blur
+            - threshold
+            - adaptive_threshold
+            - resize
+            - crop
+        parameters:
+          type: string
+          description: JSON object of numeric parameters for the selected operation.
+    ImageInspectionInput:
+      type: object
+      required: [image]
+      properties:
+        image:
+          type: string
+          format: binary
+    ImageInspection:
+      type: object
+      required: [width, height, channels, colorModel, bitDepth, mimeType]
+      properties:
+        width:
+          type: integer
+        height:
+          type: integer
+        channels:
+          type: integer
+        colorModel:
+          type: string
+          enum: [GRAY, BGR, BGRA]
+        bitDepth:
+          type: integer
+        mimeType:
+          type: string
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
 
