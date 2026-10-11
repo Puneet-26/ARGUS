@@ -63,3 +63,264 @@ export const InspectImageResponse = zod.object({
 })
 
 
+/**
+ * @summary Get the ARGUS case briefing
+ */
+export const GetCaseOverviewResponse = zod.object({
+  "caseId": zod.string(),
+  "title": zod.string(),
+  "status": zod.string(),
+  "briefing": zod.string(),
+  "incidentDate": zod.string(),
+  "timeline": zod.array(zod.object({
+  "id": zod.string(),
+  "time": zod.string(),
+  "title": zod.string(),
+  "source": zod.string(),
+  "detail": zod.string()
+})),
+  "personsOfInterest": zod.array(zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "role": zod.string(),
+  "accessCode": zod.string(),
+  "statement": zod.string()
+})),
+  "levels": zod.array(zod.object({
+  "id": zod.union([zod.literal(1),zod.literal(2),zod.literal(3),zod.literal(4)]),
+  "title": zod.string(),
+  "slug": zod.string(),
+  "objective": zod.string(),
+  "concept": zod.string(),
+  "assetUrls": zod.array(zod.string())
+}))
+})
+
+
+/**
+ * @summary Compare two evidence images using OpenCV
+ */
+export const compareImagesBodyThresholdMin = 0;
+export const compareImagesBodyThresholdMax = 255;
+
+
+
+export const CompareImagesBody = zod.object({
+  "imageBefore": zod.instanceof(Blob),
+  "imageAfter": zod.instanceof(Blob),
+  "threshold": zod.number().int().min(compareImagesBodyThresholdMin).max(compareImagesBodyThresholdMax)
+})
+
+export const CompareImagesResponse = zod.object({
+  "differencePng": zod.string().describe('Base64-encoded PNG image.'),
+  "overlayPng": zod.string().describe('Base64-encoded candidate overlay PNG image.'),
+  "candidates": zod.array(zod.object({
+  "id": zod.string(),
+  "x": zod.number().int(),
+  "y": zod.number().int(),
+  "width": zod.number().int(),
+  "height": zod.number().int(),
+  "area": zod.number().int()
+})),
+  "changedPixels": zod.number().int(),
+  "changedPercent": zod.number(),
+  "threshold": zod.number().int()
+})
+
+
+/**
+ * @summary Segment a colour range with OpenCV
+ */
+export const SegmentColorBody = zod.object({
+  "image": zod.instanceof(Blob),
+  "parameters": zod.string().describe('JSON with lower_h, lower_s, lower_v, upper_h, upper_s, upper_v, opening, and closing.')
+})
+
+export const SegmentColorResponse = zod.object({
+  "maskPng": zod.string().describe('Base64-encoded PNG image.'),
+  "segmentedPng": zod.string().describe('Base64-encoded PNG image.'),
+  "candidates": zod.array(zod.object({
+  "id": zod.string(),
+  "x": zod.number().int(),
+  "y": zod.number().int(),
+  "width": zod.number().int(),
+  "height": zod.number().int(),
+  "area": zod.number().int()
+})),
+  "selectedPixels": zod.number().int(),
+  "parameters": zod.record(zod.string(), zod.number().int())
+})
+
+
+/**
+ * @summary List the prepared workshop frame sequence
+ */
+export const ListTrailFramesResponse = zod.object({
+  "label": zod.string(),
+  "provenance": zod.string(),
+  "frames": zod.array(zod.object({
+  "frameIndex": zod.number().int(),
+  "timestamp": zod.string(),
+  "url": zod.string()
+}))
+})
+
+
+/**
+ * @summary Analyze a prepared frame sequence with OpenCV
+ */
+export const analyzeTrailBodyFramesMin = 2;
+export const analyzeTrailBodyFramesMax = 24;
+
+export const analyzeTrailBodyTimestampsMin = 2;
+export const analyzeTrailBodyTimestampsMax = 24;
+
+export const analyzeTrailBodyMotionThresholdMin = 5;
+export const analyzeTrailBodyMotionThresholdMax = 100;
+
+export const analyzeTrailBodyEntryLineFractionMin = 0.05;
+export const analyzeTrailBodyEntryLineFractionMax = 0.45;
+
+export const analyzeTrailBodyExitLineFractionMin = 0.55;
+export const analyzeTrailBodyExitLineFractionMax = 0.95;
+
+
+
+export const AnalyzeTrailBody = zod.object({
+  "frames": zod.array(zod.string().describe('Base64-encoded image bytes, without a data-URL prefix.')).min(analyzeTrailBodyFramesMin).max(analyzeTrailBodyFramesMax),
+  "timestamps": zod.array(zod.string()).min(analyzeTrailBodyTimestampsMin).max(analyzeTrailBodyTimestampsMax),
+  "motionThreshold": zod.number().int().min(analyzeTrailBodyMotionThresholdMin).max(analyzeTrailBodyMotionThresholdMax),
+  "entryLineFraction": zod.number().min(analyzeTrailBodyEntryLineFractionMin).max(analyzeTrailBodyEntryLineFractionMax),
+  "exitLineFraction": zod.number().min(analyzeTrailBodyExitLineFractionMin).max(analyzeTrailBodyExitLineFractionMax)
+})
+
+export const AnalyzeTrailResponse = zod.object({
+  "frames": zod.array(zod.object({
+  "frameIndex": zod.number().int(),
+  "timestamp": zod.string(),
+  "overlayPng": zod.string().describe('Base64-encoded PNG image.'),
+  "hasMotion": zod.boolean(),
+  "centroid": zod.union([zod.object({
+  "x": zod.number().int(),
+  "y": zod.number().int()
+}),zod.null()])
+})),
+  "events": zod.array(zod.object({
+  "id": zod.string(),
+  "kind": zod.enum(['entry-crossing', 'exit-crossing', 'movement-candidate']),
+  "timestamp": zod.string(),
+  "frameIndex": zod.number().int(),
+  "centroidX": zod.number().int(),
+  "centroidY": zod.number().int()
+})),
+  "explanation": zod.string()
+})
+
+
+/**
+ * @summary Submit the recovered Level 1 timestamp
+ */
+export const SubmitLevelOneBody = zod.object({
+  "answer": zod.string()
+})
+
+export const SubmitLevelOneResponse = zod.object({
+  "completed": zod.boolean(),
+  "message": zod.string(),
+  "feedback": zod.string()
+})
+
+
+/**
+ * @summary Submit the selected changed desk region
+ */
+export const submitLevelTwoBodyObservationMin = 12;
+
+
+
+export const SubmitLevelTwoBody = zod.object({
+  "candidateId": zod.string(),
+  "observation": zod.string().min(submitLevelTwoBodyObservationMin)
+})
+
+export const SubmitLevelTwoResponse = zod.object({
+  "completed": zod.boolean(),
+  "message": zod.string(),
+  "feedback": zod.string()
+})
+
+
+/**
+ * @summary Submit the selected colour-segmentation candidate
+ */
+export const submitLevelThreeBodyObservationMin = 12;
+
+
+
+export const SubmitLevelThreeBody = zod.object({
+  "candidateId": zod.string(),
+  "observation": zod.string().min(submitLevelThreeBodyObservationMin),
+  "parameters": zod.record(zod.string(), zod.number().int())
+})
+
+export const SubmitLevelThreeResponse = zod.object({
+  "completed": zod.boolean(),
+  "message": zod.string(),
+  "feedback": zod.string()
+})
+
+
+/**
+ * @summary Submit a reviewed movement-line crossing
+ */
+export const submitLevelFourBodyObservationMin = 12;
+
+
+
+export const SubmitLevelFourBody = zod.object({
+  "eventId": zod.string(),
+  "observation": zod.string().min(submitLevelFourBodyObservationMin)
+})
+
+export const SubmitLevelFourResponse = zod.object({
+  "completed": zod.boolean(),
+  "message": zod.string(),
+  "feedback": zod.string()
+})
+
+
+/**
+ * @summary Evaluate a participant's evidence-based case conclusion
+ */
+export const submitAccusationBodyExplanationMin = 20;
+export const submitAccusationBodyExplanationMax = 1200;
+
+
+
+export const SubmitAccusationBody = zod.object({
+  "suspectId": zod.string(),
+  "explanation": zod.string().min(submitAccusationBodyExplanationMin).max(submitAccusationBodyExplanationMax),
+  "evidence": zod.array(zod.object({
+  "id": zod.string(),
+  "sourceLevel": zod.number().int(),
+  "sourceAsset": zod.string(),
+  "method": zod.string(),
+  "observation": zod.string(),
+  "limitations": zod.string()
+}))
+})
+
+export const SubmitAccusationResponse = zod.object({
+  "correct": zod.boolean(),
+  "score": zod.number().int(),
+  "summary": zod.string(),
+  "correctSuspectName": zod.string(),
+  "evidenceReview": zod.array(zod.object({
+  "evidenceId": zod.string(),
+  "relation": zod.enum(['supports', 'context', 'limitation', 'contradicts']),
+  "feedback": zod.string()
+})),
+  "limitations": zod.array(zod.string())
+})
+
+

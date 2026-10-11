@@ -20,12 +20,27 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  AccusationInput,
+  AccusationResult,
+  CaseOverview,
+  ColorSegmentationInput,
+  ColorSegmentationResult,
   ErrorResponse,
   HealthStatus,
+  ImageComparisonInput,
+  ImageComparisonResult,
   ImageInspection,
   ImageInspectionInput,
   ImageOperation,
-  ImageProcessingInput
+  ImageProcessingInput,
+  LevelCompletionResult,
+  LevelFourSubmission,
+  LevelOneSubmission,
+  LevelThreeSubmission,
+  LevelTwoSubmission,
+  TrailAnalysisInput,
+  TrailAnalysisResult,
+  TrailFramesResponse
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -365,5 +380,842 @@ export const useInspectImage = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getInspectImageMutationOptions(options));
+    }
+
+export const getGetCaseOverviewUrl = () => {
+
+
+
+
+  return `/api/case/overview`
+}
+
+/**
+ * @summary Get the ARGUS case briefing
+ */
+export const getCaseOverview = async ( options?: Parameters<typeof customFetch>[1]): Promise<CaseOverview> => {
+
+  return customFetch<CaseOverview>(getGetCaseOverviewUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetCaseOverviewQueryKey = () => {
+    return [
+    `/api/case/overview`
+    ] as const;
+    }
+
+
+export const getGetCaseOverviewQueryOptions = <TData = Awaited<ReturnType<typeof getCaseOverview>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCaseOverview>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetCaseOverviewQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getCaseOverview>>> = ({ signal }) => getCaseOverview({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getCaseOverview>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetCaseOverviewQueryResult = NonNullable<Awaited<ReturnType<typeof getCaseOverview>>>
+export type GetCaseOverviewQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get the ARGUS case briefing
+ */
+
+export function useGetCaseOverview<TData = Awaited<ReturnType<typeof getCaseOverview>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCaseOverview>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetCaseOverviewQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCompareImagesUrl = () => {
+
+
+
+
+  return `/api/image/compare`
+}
+
+/**
+ * @summary Compare two evidence images using OpenCV
+ */
+export const compareImages = async (imageComparisonInput: ImageComparisonInput, options?: Parameters<typeof customFetch>[1]): Promise<ImageComparisonResult> => {
+    const formData = new FormData();
+formData.append(`imageBefore`, imageComparisonInput.imageBefore);
+formData.append(`imageAfter`, imageComparisonInput.imageAfter);
+formData.append(`threshold`, imageComparisonInput.threshold.toString())
+
+  return customFetch<ImageComparisonResult>(getCompareImagesUrl(),
+  {
+    ...options,
+    method: 'POST'
+    ,
+    body: formData
+  }
+);}
+
+
+
+
+
+export const getCompareImagesMutationKey = () => ['compareImages'] as const;
+
+export const getCompareImagesMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof compareImages>>, TError,CompareImagesMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof compareImages>>, TError,CompareImagesMutationVariables, TContext> => {
+
+const mutationKey = getCompareImagesMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof compareImages>>, CompareImagesMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  compareImages(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CompareImagesMutationResult = NonNullable<Awaited<ReturnType<typeof compareImages>>>
+    export type CompareImagesMutationBody = BodyType<ImageComparisonInput>
+    export type CompareImagesMutationError = ErrorType<ErrorResponse>
+    export type CompareImagesMutationVariables = {data: BodyType<ImageComparisonInput>}
+
+    /**
+ * @summary Compare two evidence images using OpenCV
+ */
+export const useCompareImages = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof compareImages>>, TError,CompareImagesMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof compareImages>>,
+        TError,
+        CompareImagesMutationVariables,
+        TContext
+      > => {
+      return useMutation(getCompareImagesMutationOptions(options));
+    }
+
+export const getSegmentColorUrl = () => {
+
+
+
+
+  return `/api/image/segment`
+}
+
+/**
+ * @summary Segment a colour range with OpenCV
+ */
+export const segmentColor = async (colorSegmentationInput: ColorSegmentationInput, options?: Parameters<typeof customFetch>[1]): Promise<ColorSegmentationResult> => {
+    const formData = new FormData();
+formData.append(`image`, colorSegmentationInput.image);
+formData.append(`parameters`, colorSegmentationInput.parameters);
+
+  return customFetch<ColorSegmentationResult>(getSegmentColorUrl(),
+  {
+    ...options,
+    method: 'POST'
+    ,
+    body: formData
+  }
+);}
+
+
+
+
+
+export const getSegmentColorMutationKey = () => ['segmentColor'] as const;
+
+export const getSegmentColorMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof segmentColor>>, TError,SegmentColorMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof segmentColor>>, TError,SegmentColorMutationVariables, TContext> => {
+
+const mutationKey = getSegmentColorMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof segmentColor>>, SegmentColorMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  segmentColor(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SegmentColorMutationResult = NonNullable<Awaited<ReturnType<typeof segmentColor>>>
+    export type SegmentColorMutationBody = BodyType<ColorSegmentationInput>
+    export type SegmentColorMutationError = ErrorType<ErrorResponse>
+    export type SegmentColorMutationVariables = {data: BodyType<ColorSegmentationInput>}
+
+    /**
+ * @summary Segment a colour range with OpenCV
+ */
+export const useSegmentColor = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof segmentColor>>, TError,SegmentColorMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof segmentColor>>,
+        TError,
+        SegmentColorMutationVariables,
+        TContext
+      > => {
+      return useMutation(getSegmentColorMutationOptions(options));
+    }
+
+export const getListTrailFramesUrl = () => {
+
+
+
+
+  return `/api/trail/frames`
+}
+
+/**
+ * @summary List the prepared workshop frame sequence
+ */
+export const listTrailFrames = async ( options?: Parameters<typeof customFetch>[1]): Promise<TrailFramesResponse> => {
+
+  return customFetch<TrailFramesResponse>(getListTrailFramesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListTrailFramesQueryKey = () => {
+    return [
+    `/api/trail/frames`
+    ] as const;
+    }
+
+
+export const getListTrailFramesQueryOptions = <TData = Awaited<ReturnType<typeof listTrailFrames>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listTrailFrames>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListTrailFramesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listTrailFrames>>> = ({ signal }) => listTrailFrames({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listTrailFrames>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListTrailFramesQueryResult = NonNullable<Awaited<ReturnType<typeof listTrailFrames>>>
+export type ListTrailFramesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List the prepared workshop frame sequence
+ */
+
+export function useListTrailFrames<TData = Awaited<ReturnType<typeof listTrailFrames>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listTrailFrames>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListTrailFramesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getAnalyzeTrailUrl = () => {
+
+
+
+
+  return `/api/trail/analyze`
+}
+
+/**
+ * @summary Analyze a prepared frame sequence with OpenCV
+ */
+export const analyzeTrail = async (trailAnalysisInput: TrailAnalysisInput, options?: Parameters<typeof customFetch>[1]): Promise<TrailAnalysisResult> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<TrailAnalysisResult>(getAnalyzeTrailUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(trailAnalysisInput)
+  }
+);}
+
+
+
+
+
+export const getAnalyzeTrailMutationKey = () => ['analyzeTrail'] as const;
+
+export const getAnalyzeTrailMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof analyzeTrail>>, TError,AnalyzeTrailMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof analyzeTrail>>, TError,AnalyzeTrailMutationVariables, TContext> => {
+
+const mutationKey = getAnalyzeTrailMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof analyzeTrail>>, AnalyzeTrailMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  analyzeTrail(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AnalyzeTrailMutationResult = NonNullable<Awaited<ReturnType<typeof analyzeTrail>>>
+    export type AnalyzeTrailMutationBody = BodyType<TrailAnalysisInput>
+    export type AnalyzeTrailMutationError = ErrorType<ErrorResponse>
+    export type AnalyzeTrailMutationVariables = {data: BodyType<TrailAnalysisInput>}
+
+    /**
+ * @summary Analyze a prepared frame sequence with OpenCV
+ */
+export const useAnalyzeTrail = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof analyzeTrail>>, TError,AnalyzeTrailMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof analyzeTrail>>,
+        TError,
+        AnalyzeTrailMutationVariables,
+        TContext
+      > => {
+      return useMutation(getAnalyzeTrailMutationOptions(options));
+    }
+
+export const getSubmitLevelOneUrl = () => {
+
+
+
+
+  return `/api/case/levels/1/submit`
+}
+
+/**
+ * @summary Submit the recovered Level 1 timestamp
+ */
+export const submitLevelOne = async (levelOneSubmission: LevelOneSubmission, options?: Parameters<typeof customFetch>[1]): Promise<LevelCompletionResult> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<LevelCompletionResult>(getSubmitLevelOneUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(levelOneSubmission)
+  }
+);}
+
+
+
+
+
+export const getSubmitLevelOneMutationKey = () => ['submitLevelOne'] as const;
+
+export const getSubmitLevelOneMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof submitLevelOne>>, TError,SubmitLevelOneMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof submitLevelOne>>, TError,SubmitLevelOneMutationVariables, TContext> => {
+
+const mutationKey = getSubmitLevelOneMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof submitLevelOne>>, SubmitLevelOneMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  submitLevelOne(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SubmitLevelOneMutationResult = NonNullable<Awaited<ReturnType<typeof submitLevelOne>>>
+    export type SubmitLevelOneMutationBody = BodyType<LevelOneSubmission>
+    export type SubmitLevelOneMutationError = ErrorType<unknown>
+    export type SubmitLevelOneMutationVariables = {data: BodyType<LevelOneSubmission>}
+
+    /**
+ * @summary Submit the recovered Level 1 timestamp
+ */
+export const useSubmitLevelOne = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof submitLevelOne>>, TError,SubmitLevelOneMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof submitLevelOne>>,
+        TError,
+        SubmitLevelOneMutationVariables,
+        TContext
+      > => {
+      return useMutation(getSubmitLevelOneMutationOptions(options));
+    }
+
+export const getSubmitLevelTwoUrl = () => {
+
+
+
+
+  return `/api/case/levels/2/submit`
+}
+
+/**
+ * @summary Submit the selected changed desk region
+ */
+export const submitLevelTwo = async (levelTwoSubmission: LevelTwoSubmission, options?: Parameters<typeof customFetch>[1]): Promise<LevelCompletionResult> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<LevelCompletionResult>(getSubmitLevelTwoUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(levelTwoSubmission)
+  }
+);}
+
+
+
+
+
+export const getSubmitLevelTwoMutationKey = () => ['submitLevelTwo'] as const;
+
+export const getSubmitLevelTwoMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof submitLevelTwo>>, TError,SubmitLevelTwoMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof submitLevelTwo>>, TError,SubmitLevelTwoMutationVariables, TContext> => {
+
+const mutationKey = getSubmitLevelTwoMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof submitLevelTwo>>, SubmitLevelTwoMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  submitLevelTwo(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SubmitLevelTwoMutationResult = NonNullable<Awaited<ReturnType<typeof submitLevelTwo>>>
+    export type SubmitLevelTwoMutationBody = BodyType<LevelTwoSubmission>
+    export type SubmitLevelTwoMutationError = ErrorType<unknown>
+    export type SubmitLevelTwoMutationVariables = {data: BodyType<LevelTwoSubmission>}
+
+    /**
+ * @summary Submit the selected changed desk region
+ */
+export const useSubmitLevelTwo = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof submitLevelTwo>>, TError,SubmitLevelTwoMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof submitLevelTwo>>,
+        TError,
+        SubmitLevelTwoMutationVariables,
+        TContext
+      > => {
+      return useMutation(getSubmitLevelTwoMutationOptions(options));
+    }
+
+export const getSubmitLevelThreeUrl = () => {
+
+
+
+
+  return `/api/case/levels/3/submit`
+}
+
+/**
+ * @summary Submit the selected colour-segmentation candidate
+ */
+export const submitLevelThree = async (levelThreeSubmission: LevelThreeSubmission, options?: Parameters<typeof customFetch>[1]): Promise<LevelCompletionResult> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<LevelCompletionResult>(getSubmitLevelThreeUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(levelThreeSubmission)
+  }
+);}
+
+
+
+
+
+export const getSubmitLevelThreeMutationKey = () => ['submitLevelThree'] as const;
+
+export const getSubmitLevelThreeMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof submitLevelThree>>, TError,SubmitLevelThreeMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof submitLevelThree>>, TError,SubmitLevelThreeMutationVariables, TContext> => {
+
+const mutationKey = getSubmitLevelThreeMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof submitLevelThree>>, SubmitLevelThreeMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  submitLevelThree(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SubmitLevelThreeMutationResult = NonNullable<Awaited<ReturnType<typeof submitLevelThree>>>
+    export type SubmitLevelThreeMutationBody = BodyType<LevelThreeSubmission>
+    export type SubmitLevelThreeMutationError = ErrorType<unknown>
+    export type SubmitLevelThreeMutationVariables = {data: BodyType<LevelThreeSubmission>}
+
+    /**
+ * @summary Submit the selected colour-segmentation candidate
+ */
+export const useSubmitLevelThree = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof submitLevelThree>>, TError,SubmitLevelThreeMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof submitLevelThree>>,
+        TError,
+        SubmitLevelThreeMutationVariables,
+        TContext
+      > => {
+      return useMutation(getSubmitLevelThreeMutationOptions(options));
+    }
+
+export const getSubmitLevelFourUrl = () => {
+
+
+
+
+  return `/api/case/levels/4/submit`
+}
+
+/**
+ * @summary Submit a reviewed movement-line crossing
+ */
+export const submitLevelFour = async (levelFourSubmission: LevelFourSubmission, options?: Parameters<typeof customFetch>[1]): Promise<LevelCompletionResult> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<LevelCompletionResult>(getSubmitLevelFourUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(levelFourSubmission)
+  }
+);}
+
+
+
+
+
+export const getSubmitLevelFourMutationKey = () => ['submitLevelFour'] as const;
+
+export const getSubmitLevelFourMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof submitLevelFour>>, TError,SubmitLevelFourMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof submitLevelFour>>, TError,SubmitLevelFourMutationVariables, TContext> => {
+
+const mutationKey = getSubmitLevelFourMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof submitLevelFour>>, SubmitLevelFourMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  submitLevelFour(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SubmitLevelFourMutationResult = NonNullable<Awaited<ReturnType<typeof submitLevelFour>>>
+    export type SubmitLevelFourMutationBody = BodyType<LevelFourSubmission>
+    export type SubmitLevelFourMutationError = ErrorType<unknown>
+    export type SubmitLevelFourMutationVariables = {data: BodyType<LevelFourSubmission>}
+
+    /**
+ * @summary Submit a reviewed movement-line crossing
+ */
+export const useSubmitLevelFour = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof submitLevelFour>>, TError,SubmitLevelFourMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof submitLevelFour>>,
+        TError,
+        SubmitLevelFourMutationVariables,
+        TContext
+      > => {
+      return useMutation(getSubmitLevelFourMutationOptions(options));
+    }
+
+export const getSubmitAccusationUrl = () => {
+
+
+
+
+  return `/api/case/accusation`
+}
+
+/**
+ * @summary Evaluate a participant's evidence-based case conclusion
+ */
+export const submitAccusation = async (accusationInput: AccusationInput, options?: Parameters<typeof customFetch>[1]): Promise<AccusationResult> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<AccusationResult>(getSubmitAccusationUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(accusationInput)
+  }
+);}
+
+
+
+
+
+export const getSubmitAccusationMutationKey = () => ['submitAccusation'] as const;
+
+export const getSubmitAccusationMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof submitAccusation>>, TError,SubmitAccusationMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof submitAccusation>>, TError,SubmitAccusationMutationVariables, TContext> => {
+
+const mutationKey = getSubmitAccusationMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof submitAccusation>>, SubmitAccusationMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  submitAccusation(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SubmitAccusationMutationResult = NonNullable<Awaited<ReturnType<typeof submitAccusation>>>
+    export type SubmitAccusationMutationBody = BodyType<AccusationInput>
+    export type SubmitAccusationMutationError = ErrorType<ErrorResponse>
+    export type SubmitAccusationMutationVariables = {data: BodyType<AccusationInput>}
+
+    /**
+ * @summary Evaluate a participant's evidence-based case conclusion
+ */
+export const useSubmitAccusation = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof submitAccusation>>, TError,SubmitAccusationMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof submitAccusation>>,
+        TError,
+        SubmitAccusationMutationVariables,
+        TContext
+      > => {
+      return useMutation(getSubmitAccusationMutationOptions(options));
     }
 

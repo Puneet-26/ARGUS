@@ -6,8 +6,23 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from './accusationInput';
+export * from './accusationResult';
+export * from './caseLevel';
+export * from './caseLevelId';
+export * from './caseOverview';
+export * from './caseTimelineEvent';
+export * from './colorSegmentationInput';
+export * from './colorSegmentationResult';
+export * from './colorSegmentationResultParameters';
 export * from './errorResponse';
+export * from './evidenceClaim';
+export * from './evidenceReview';
+export * from './evidenceReviewRelation';
 export * from './healthStatus';
+export * from './imageCandidate';
+export * from './imageComparisonInput';
+export * from './imageComparisonResult';
 export * from './imageInspection';
 export * from './imageInspectionColorModel';
 export * from './imageInspectionInput';
@@ -15,3 +30,18 @@ export * from './imageOperation';
 export * from './imageOperationId';
 export * from './imageProcessingInput';
 export * from './imageProcessingInputOperation';
+export * from './levelCompletionResult';
+export * from './levelFourSubmission';
+export * from './levelOneSubmission';
+export * from './levelThreeSubmission';
+export * from './levelThreeSubmissionParameters';
+export * from './levelTwoSubmission';
+export * from './personOfInterest';
+export * from './trailAnalysisInput';
+export * from './trailAnalysisResult';
+export * from './trailCentroid';
+export * from './trailEvent';
+export * from './trailEventKind';
+export * from './trailFrame';
+export * from './trailFrameResult';
+export * from './trailFramesResponse';

@@ -104,6 +104,210 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /case/overview:
+    get:
+      operationId: getCaseOverview
+      tags: [case]
+      summary: Get the ARGUS case briefing
+      responses:
+        "200":
+          description: Fictional case briefing, people of interest, timeline, and level objectives
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CaseOverview"
+  /image/compare:
+    post:
+      operationId: compareImages
+      tags: [images]
+      summary: Compare two evidence images using OpenCV
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/ImageComparisonInput"
+      responses:
+        "200":
+          description: Absolute-difference image and changed-region candidates
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImageComparisonResult"
+        "400":
+          description: Invalid images or threshold
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "413":
+          description: One or both images are too large
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /image/segment:
+    post:
+      operationId: segmentColor
+      tags: [images]
+      summary: Segment a colour range with OpenCV
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/ColorSegmentationInput"
+      responses:
+        "200":
+          description: HSV mask, segmented image, and candidate contours
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ColorSegmentationResult"
+        "400":
+          description: Invalid image or HSV parameters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "413":
+          description: Image is too large
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /trail/frames:
+    get:
+      operationId: listTrailFrames
+      tags: [trail]
+      summary: List the prepared workshop frame sequence
+      responses:
+        "200":
+          description: Ordered frame sequence with fictional camera timestamps
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrailFramesResponse"
+  /trail/analyze:
+    post:
+      operationId: analyzeTrail
+      tags: [trail]
+      summary: Analyze a prepared frame sequence with OpenCV
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TrailAnalysisInput"
+      responses:
+        "200":
+          description: Frame-difference overlays, movement candidates, and line crossings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrailAnalysisResult"
+        "400":
+          description: Invalid frame sequence or analysis settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /case/levels/1/submit:
+    post:
+      operationId: submitLevelOne
+      tags: [case]
+      summary: Submit the recovered Level 1 timestamp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LevelOneSubmission"
+      responses:
+        "200":
+          description: Timestamp checkpoint result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LevelCompletionResult"
+  /case/levels/2/submit:
+    post:
+      operationId: submitLevelTwo
+      tags: [case]
+      summary: Submit the selected changed desk region
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LevelTwoSubmission"
+      responses:
+        "200":
+          description: Desk-difference checkpoint result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LevelCompletionResult"
+  /case/levels/3/submit:
+    post:
+      operationId: submitLevelThree
+      tags: [case]
+      summary: Submit the selected colour-segmentation candidate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LevelThreeSubmission"
+      responses:
+        "200":
+          description: Colour-segmentation checkpoint result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LevelCompletionResult"
+  /case/levels/4/submit:
+    post:
+      operationId: submitLevelFour
+      tags: [case]
+      summary: Submit a reviewed movement-line crossing
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LevelFourSubmission"
+      responses:
+        "200":
+          description: Movement-analysis checkpoint result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LevelCompletionResult"
+  /case/accusation:
+    post:
+      operationId: submitAccusation
+      tags: [case]
+      summary: Evaluate a participant's evidence-based case conclusion
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AccusationInput"
+      responses:
+        "200":
+          description: Feedback against the configured fictional case solution
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccusationResult"
+        "400":
+          description: Invalid suspect or incomplete submission
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 components:
   schemas:
     HealthStatus:
@@ -184,6 +388,377 @@ components:
           type: integer
         mimeType:
           type: string
+    CaseOverview:
+      type: object
+      required: [caseId, title, status, briefing, incidentDate, timeline, personsOfInterest, levels]
+      properties:
+        caseId:
+          type: string
+        title:
+          type: string
+        status:
+          type: string
+        briefing:
+          type: string
+        incidentDate:
+          type: string
+        timeline:
+          type: array
+          items:
+            $ref: "#/components/schemas/CaseTimelineEvent"
+        personsOfInterest:
+          type: array
+          items:
+            $ref: "#/components/schemas/PersonOfInterest"
+        levels:
+          type: array
+          items:
+            $ref: "#/components/schemas/CaseLevel"
+    CaseTimelineEvent:
+      type: object
+      required: [id, time, title, source, detail]
+      properties:
+        id:
+          type: string
+        time:
+          type: string
+        title:
+          type: string
+        source:
+          type: string
+        detail:
+          type: string
+    PersonOfInterest:
+      type: object
+      required: [id, name, role, accessCode, statement]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        role:
+          type: string
+        accessCode:
+          type: string
+        statement:
+          type: string
+    CaseLevel:
+      type: object
+      required: [id, title, slug, objective, concept, assetUrls]
+      properties:
+        id:
+          type: integer
+          enum: [1, 2, 3, 4]
+        title:
+          type: string
+        slug:
+          type: string
+        objective:
+          type: string
+        concept:
+          type: string
+        assetUrls:
+          type: array
+          items:
+            type: string
+    ImageComparisonInput:
+      type: object
+      required: [imageBefore, imageAfter, threshold]
+      properties:
+        imageBefore:
+          type: string
+          format: binary
+        imageAfter:
+          type: string
+          format: binary
+        threshold:
+          type: integer
+          minimum: 0
+          maximum: 255
+    ImageCandidate:
+      type: object
+      required: [id, x, y, width, height, area]
+      properties:
+        id:
+          type: string
+        x:
+          type: integer
+        y:
+          type: integer
+        width:
+          type: integer
+        height:
+          type: integer
+        area:
+          type: integer
+    ImageComparisonResult:
+      type: object
+      required: [differencePng, overlayPng, candidates, changedPixels, changedPercent, threshold]
+      properties:
+        differencePng:
+          type: string
+          description: Base64-encoded PNG image.
+        overlayPng:
+          type: string
+          description: Base64-encoded candidate overlay PNG image.
+        candidates:
+          type: array
+          items:
+            $ref: "#/components/schemas/ImageCandidate"
+        changedPixels:
+          type: integer
+        changedPercent:
+          type: number
+        threshold:
+          type: integer
+    ColorSegmentationInput:
+      type: object
+      required: [image, parameters]
+      properties:
+        image:
+          type: string
+          format: binary
+        parameters:
+          type: string
+          description: JSON with lower_h, lower_s, lower_v, upper_h, upper_s, upper_v, opening, and closing.
+    ColorSegmentationResult:
+      type: object
+      required: [maskPng, segmentedPng, candidates, selectedPixels, parameters]
+      properties:
+        maskPng:
+          type: string
+          description: Base64-encoded PNG image.
+        segmentedPng:
+          type: string
+          description: Base64-encoded PNG image.
+        candidates:
+          type: array
+          items:
+            $ref: "#/components/schemas/ImageCandidate"
+        selectedPixels:
+          type: integer
+        parameters:
+          type: object
+          additionalProperties:
+            type: integer
+    TrailFrame:
+      type: object
+      required: [frameIndex, timestamp, url]
+      properties:
+        frameIndex:
+          type: integer
+        timestamp:
+          type: string
+        url:
+          type: string
+    TrailFramesResponse:
+      type: object
+      required: [label, provenance, frames]
+      properties:
+        label:
+          type: string
+        provenance:
+          type: string
+        frames:
+          type: array
+          items:
+            $ref: "#/components/schemas/TrailFrame"
+    TrailAnalysisInput:
+      type: object
+      required: [motionThreshold, entryLineFraction, exitLineFraction]
+      properties:
+        motionThreshold:
+          type: integer
+          minimum: 5
+          maximum: 100
+        entryLineFraction:
+          type: number
+          minimum: 0.05
+          maximum: 0.45
+        exitLineFraction:
+          type: number
+          minimum: 0.55
+          maximum: 0.95
+    TrailCentroid:
+      type: object
+      required: [x, y]
+      properties:
+        x:
+          type: integer
+        y:
+          type: integer
+    TrailFrameResult:
+      type: object
+      required: [frameIndex, timestamp, overlayJpeg, hasMotion, centroid]
+      properties:
+        frameIndex:
+          type: integer
+        timestamp:
+          type: string
+        overlayJpeg:
+          type: string
+          description: Base64-encoded JPEG image.
+        hasMotion:
+          type: boolean
+        centroid:
+          anyOf:
+            - $ref: "#/components/schemas/TrailCentroid"
+            - type: "null"
+    TrailEvent:
+      type: object
+      required: [id, kind, timestamp, frameIndex, centroidX, centroidY]
+      properties:
+        id:
+          type: string
+        kind:
+          type: string
+          enum: [entry-crossing, exit-crossing, movement-candidate]
+        timestamp:
+          type: string
+        frameIndex:
+          type: integer
+        centroidX:
+          type: integer
+        centroidY:
+          type: integer
+    TrailAnalysisResult:
+      type: object
+      required: [frames, events, explanation]
+      properties:
+        frames:
+          type: array
+          items:
+            $ref: "#/components/schemas/TrailFrameResult"
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/TrailEvent"
+        explanation:
+          type: string
+    LevelOneSubmission:
+      type: object
+      required: [answer]
+      properties:
+        answer:
+          type: string
+    LevelTwoSubmission:
+      type: object
+      required: [candidateId, threshold, observation]
+      properties:
+        candidateId:
+          type: string
+        threshold:
+          type: integer
+          minimum: 0
+          maximum: 255
+        observation:
+          type: string
+          minLength: 12
+    LevelThreeSubmission:
+      type: object
+      required: [candidateId, observation, parameters]
+      properties:
+        candidateId:
+          type: string
+        observation:
+          type: string
+          minLength: 12
+        parameters:
+          type: object
+          additionalProperties:
+            type: integer
+    LevelFourSubmission:
+      type: object
+      required: [eventId, observation, motionThreshold, entryLineFraction, exitLineFraction]
+      properties:
+        eventId:
+          type: string
+        observation:
+          type: string
+          minLength: 12
+        motionThreshold:
+          type: integer
+          minimum: 5
+          maximum: 100
+        entryLineFraction:
+          type: number
+          minimum: 0.05
+          maximum: 0.45
+        exitLineFraction:
+          type: number
+          minimum: 0.55
+          maximum: 0.95
+    LevelCompletionResult:
+      type: object
+      required: [completed, message, feedback]
+      properties:
+        completed:
+          type: boolean
+        message:
+          type: string
+        feedback:
+          type: string
+    EvidenceClaim:
+      type: object
+      required: [id, sourceLevel, sourceAsset, method, observation, limitations]
+      properties:
+        id:
+          type: string
+        sourceLevel:
+          type: integer
+        sourceAsset:
+          type: string
+        method:
+          type: string
+        observation:
+          type: string
+        limitations:
+          type: string
+    AccusationInput:
+      type: object
+      required: [suspectId, explanation, evidence]
+      properties:
+        suspectId:
+          type: string
+        explanation:
+          type: string
+          minLength: 20
+          maxLength: 1200
+        evidence:
+          type: array
+          items:
+            $ref: "#/components/schemas/EvidenceClaim"
+    EvidenceReview:
+      type: object
+      required: [evidenceId, relation, feedback]
+      properties:
+        evidenceId:
+          type: string
+        relation:
+          type: string
+          enum: [supports, context, limitation, contradicts]
+        feedback:
+          type: string
+    AccusationResult:
+      type: object
+      required: [correct, score, summary, correctSuspectName, evidenceReview, limitations]
+      properties:
+        correct:
+          type: boolean
+        score:
+          type: integer
+        summary:
+          type: string
+        correctSuspectName:
+          type: string
+        evidenceReview:
+          type: array
+          items:
+            $ref: "#/components/schemas/EvidenceReview"
+        limitations:
+          type: array
+          items:
+            type: string
     ErrorResponse:
       type: object
       required: [error]

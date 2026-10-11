@@ -78,6 +78,253 @@ export interface ImageInspection {
   mimeType: string;
 }
 
+export interface CaseTimelineEvent {
+  id: string;
+  time: string;
+  title: string;
+  source: string;
+  detail: string;
+}
+
+export interface PersonOfInterest {
+  id: string;
+  name: string;
+  role: string;
+  accessCode: string;
+  statement: string;
+}
+
+export type CaseLevelId = typeof CaseLevelId[keyof typeof CaseLevelId];
+
+
+export const CaseLevelId = {
+  NUMBER_1: 1,
+  NUMBER_2: 2,
+  NUMBER_3: 3,
+  NUMBER_4: 4,
+} as const;
+
+export interface CaseLevel {
+  id: CaseLevelId;
+  title: string;
+  slug: string;
+  objective: string;
+  concept: string;
+  assetUrls: string[];
+}
+
+export interface CaseOverview {
+  caseId: string;
+  title: string;
+  status: string;
+  briefing: string;
+  incidentDate: string;
+  timeline: CaseTimelineEvent[];
+  personsOfInterest: PersonOfInterest[];
+  levels: CaseLevel[];
+}
+
+export interface ImageComparisonInput {
+  imageBefore: Blob;
+  imageAfter: Blob;
+  /**
+     * @minimum 0
+     * @maximum 255
+     */
+  threshold: number;
+}
+
+export interface ImageCandidate {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  area: number;
+}
+
+export interface ImageComparisonResult {
+  /** Base64-encoded PNG image. */
+  differencePng: string;
+  /** Base64-encoded candidate overlay PNG image. */
+  overlayPng: string;
+  candidates: ImageCandidate[];
+  changedPixels: number;
+  changedPercent: number;
+  threshold: number;
+}
+
+export interface ColorSegmentationInput {
+  image: Blob;
+  /** JSON with lower_h, lower_s, lower_v, upper_h, upper_s, upper_v, opening, and closing. */
+  parameters: string;
+}
+
+export type ColorSegmentationResultParameters = {[key: string]: number};
+
+export interface ColorSegmentationResult {
+  /** Base64-encoded PNG image. */
+  maskPng: string;
+  /** Base64-encoded PNG image. */
+  segmentedPng: string;
+  candidates: ImageCandidate[];
+  selectedPixels: number;
+  parameters: ColorSegmentationResultParameters;
+}
+
+export interface TrailFrame {
+  frameIndex: number;
+  timestamp: string;
+  url: string;
+}
+
+export interface TrailFramesResponse {
+  label: string;
+  provenance: string;
+  frames: TrailFrame[];
+}
+
+export interface TrailAnalysisInput {
+  /**
+     * @minItems 2
+     * @maxItems 24
+     */
+  frames: string[];
+  /**
+     * @minItems 2
+     * @maxItems 24
+     */
+  timestamps: string[];
+  /**
+     * @minimum 5
+     * @maximum 100
+     */
+  motionThreshold: number;
+  /**
+     * @minimum 0.05
+     * @maximum 0.45
+     */
+  entryLineFraction: number;
+  /**
+     * @minimum 0.55
+     * @maximum 0.95
+     */
+  exitLineFraction: number;
+}
+
+export interface TrailCentroid {
+  x: number;
+  y: number;
+}
+
+export interface TrailFrameResult {
+  frameIndex: number;
+  timestamp: string;
+  /** Base64-encoded PNG image. */
+  overlayPng: string;
+  hasMotion: boolean;
+  centroid: TrailCentroid | null;
+}
+
+export type TrailEventKind = typeof TrailEventKind[keyof typeof TrailEventKind];
+
+
+export const TrailEventKind = {
+  'entry-crossing': 'entry-crossing',
+  'exit-crossing': 'exit-crossing',
+  'movement-candidate': 'movement-candidate',
+} as const;
+
+export interface TrailEvent {
+  id: string;
+  kind: TrailEventKind;
+  timestamp: string;
+  frameIndex: number;
+  centroidX: number;
+  centroidY: number;
+}
+
+export interface TrailAnalysisResult {
+  frames: TrailFrameResult[];
+  events: TrailEvent[];
+  explanation: string;
+}
+
+export interface LevelOneSubmission {
+  answer: string;
+}
+
+export interface LevelTwoSubmission {
+  candidateId: string;
+  /** @minLength 12 */
+  observation: string;
+}
+
+export type LevelThreeSubmissionParameters = {[key: string]: number};
+
+export interface LevelThreeSubmission {
+  candidateId: string;
+  /** @minLength 12 */
+  observation: string;
+  parameters: LevelThreeSubmissionParameters;
+}
+
+export interface LevelFourSubmission {
+  eventId: string;
+  /** @minLength 12 */
+  observation: string;
+}
+
+export interface LevelCompletionResult {
+  completed: boolean;
+  message: string;
+  feedback: string;
+}
+
+export interface EvidenceClaim {
+  id: string;
+  sourceLevel: number;
+  sourceAsset: string;
+  method: string;
+  observation: string;
+  limitations: string;
+}
+
+export interface AccusationInput {
+  suspectId: string;
+  /**
+     * @minLength 20
+     * @maxLength 1200
+     */
+  explanation: string;
+  evidence: EvidenceClaim[];
+}
+
+export type EvidenceReviewRelation = typeof EvidenceReviewRelation[keyof typeof EvidenceReviewRelation];
+
+
+export const EvidenceReviewRelation = {
+  supports: 'supports',
+  context: 'context',
+  limitation: 'limitation',
+  contradicts: 'contradicts',
+} as const;
+
+export interface EvidenceReview {
+  evidenceId: string;
+  relation: EvidenceReviewRelation;
+  feedback: string;
+}
+
+export interface AccusationResult {
+  correct: boolean;
+  score: number;
+  summary: string;
+  correctSuspectName: string;
+  evidenceReview: EvidenceReview[];
+  limitations: string[];
+}
+
 export interface ErrorResponse {
   error: string;
 }
