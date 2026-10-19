@@ -7,6 +7,7 @@ from PySide6.QtWidgets import QComboBox, QFileDialog, QGroupBox, QHBoxLayout, QL
 
 from evidence.registry import EvidenceEntry, registry
 from evidence.artifacts import documentary_records, missing_manifest_assets
+from evidence.labels import display_module_label
 from ui.style import COLORS, FONTS, RADIUS, SPACING
 
 
@@ -117,14 +118,16 @@ class FinalReportWidget(QWidget):
                 if entry.kind in ("detection", "video_tracking") and entry.source_timestamp:
                     where = f"clip-relative {where}"
                 note_prefix = "Investigator note · " if entry.kind == "manual_note" else ""
-                report += f"- **{note_prefix}{entry.evidence_id or entry.module} · {where}:** {entry.observation or entry.value}. Source: {entry.source_filename or 'not recorded'}.\n"
+                module_label = display_module_label(entry.module)
+                evidence_label = f"{entry.evidence_id} · {module_label}" if entry.evidence_id else module_label
+                report += f"- **{note_prefix}{evidence_label} · {where}:** {entry.observation or entry.value}. Source: {entry.source_filename or 'not recorded'}.\n"
         else:
             report += "_No computer-vision observations have been recorded; no timeline facts are inferred._\n"
 
         report += "## Direct observations\n"
         if direct:
             for entry in direct:
-                report += f"- **{entry.evidence_id + ' · ' if entry.evidence_id else ''}{entry.module}:** {entry.observation or entry.description or entry.value}"
+                report += f"- **{entry.evidence_id + ' · ' if entry.evidence_id else ''}{display_module_label(entry.module)}:** {entry.observation or entry.description or entry.value}"
                 if entry.source_filename:
                     report += f" _({entry.source_filename})_"
                 if entry.limitation:
@@ -146,7 +149,7 @@ class FinalReportWidget(QWidget):
         report += "\n## Investigator-entered notes\n"
         if other_notes:
             for entry in other_notes:
-                report += f"- **{entry.module}:** {entry.observation or entry.value}"
+                report += f"- **{display_module_label(entry.module)}:** {entry.observation or entry.value}"
                 if entry.source_filename:
                     report += f" (source: {entry.source_filename})"
                 report += f" Interpretation: {entry.interpretation or 'not recorded'}. Uncertainty: {entry.uncertainty}.\n"
@@ -166,7 +169,7 @@ class FinalReportWidget(QWidget):
         report += "\n## Computer-vision results\n"
         if computer:
             for entry in computer:
-                report += f"- **{entry.evidence_id + ' · ' if entry.evidence_id else ''}{entry.module}:** {entry.observation or entry.value}. Method: {entry.technique or entry.kind}."
+                report += f"- **{entry.evidence_id + ' · ' if entry.evidence_id else ''}{display_module_label(entry.module)}:** {entry.observation or entry.value}. Method: {entry.technique or entry.kind}."
                 if entry.source_filename:
                     report += f" Source: {entry.source_filename}."
                 if entry.source_timestamp:

@@ -224,15 +224,17 @@ class ImageDisplayLabel(QLabel):
 
     def set_upload_enabled(self, enabled=True, media_kind="image"):
         self._upload_enabled = bool(enabled)
-        self._upload_media_kind = "video" if media_kind == "video" else "image"
+        self._upload_media_kind = media_kind if media_kind in {"video", "image or video"} else "image"
         self.setCursor(Qt.PointingHandCursor if self._upload_enabled else Qt.ArrowCursor)
         if self._source_pixmap is None:
             self._show_empty_state()
 
     def _show_empty_state(self):
         if self._upload_enabled:
-            media_label = "video" if self._upload_media_kind == "video" else "image"
-            upload_noun = "a video" if media_label == "video" else "an image"
+            upload_noun = {
+                "video": "a video",
+                "image or video": "an image or a video",
+            }.get(self._upload_media_kind, "an image")
             self.setText(
                 '<div style="text-align:center;">'
                 '<span style="font-size:17px; font-weight:600; color:#E2DED5;">Upload Evidence</span>'

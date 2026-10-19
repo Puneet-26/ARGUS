@@ -25,7 +25,7 @@ from ui.widgets.dashboard import DashboardWidget
 from ui.widgets.evidence_notebook import EvidenceNotebookWidget
 from ui.widgets.final_report import FinalReportWidget
 from ui.widgets.lab1_image import Lab1ImageWidget
-from ui.widgets.lab2_detection import Lab2DetectionWidget
+from ui.widgets.lab2_detection import IMAGE_SUFFIXES as LEVEL2_IMAGE_SUFFIXES, VIDEO_SUFFIXES as LEVEL2_VIDEO_SUFFIXES, Lab2DetectionWidget
 from ui.widgets.lab3_colour import Lab3ColourWidget
 from ui.widgets.lab4_motion import Lab4MotionWidget
 from ui.widgets.settings import SettingsWidget
@@ -33,7 +33,7 @@ from evidence.registry import EvidenceEntry, registry
 
 
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".jfif", ".bmp", ".dib", ".webp", ".tif", ".tiff", ".ppm", ".pgm", ".pnm", ".jp2"}
-VIDEO_SUFFIXES = {".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v", ".mpeg", ".mpg", ".wmv"}
+VIDEO_SUFFIXES = {".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v", ".mpeg", ".mpg", ".wmv", ".3gp", ".3g2", ".flv", ".ts", ".mts", ".m2ts", ".ogv"}
 
 
 class ProcessingWorker(QThread):
@@ -159,24 +159,24 @@ class MainWindow(QMainWindow):
     PAGE_LABELS = [
         "Home",
         "1 · Timestamp",
-        "2 · YOLO",
-        "3 · Red Bag",
-        "4 · Tracking",
+        "2 · Detection",
+        "3 · Colour ID",
+        "4 · Timeline",
         "Notebook",
         "Report",
         "Settings",
     ]
     PAGE_TITLES = {
         1: ("LEVEL 01 · SIGHT REPAIR", "Recover the timestamp", "Use OpenCV to inspect a dark CCTV image. The frame time is an observation, not proof of the incident time."),
-        2: ("LEVEL 02 · OBJECT DETECTION", "Reconstruct the lab scene", "Inspect actual YOLO predictions across a baseline clip. Detection cannot establish object identity or a theft event."),
-        3: ("LEVEL 03 · THE RED BAG", "Find red-region candidates", "Compare the real HSV mask and filtered candidate regions with the source image."),
-        4: ("LEVEL 04 · FOLLOW THE TRAIL", "Attempt to reconstruct the route", "Track nearby red-region centroids across readable frames; gaps and red distractors can make the route ambiguous."),
+        2: ("LEVEL 02 · THE MISSING PHONE", "Reconstruct the Lab Scene", "Run pretrained YOLO object detection on actual image or video evidence. Predictions cover supported classes and do not establish object identity or an event."),
+        3: ("LEVEL 03 · IDENTIFY THE RED BAG", "Find the Red Bag", "Use HSV colour segmentation, wrapped red masking, noise removal, and contour detection to inspect candidate regions."),
+        4: ("LEVEL 04 · TRACK THE RED BAG", "Reconstruct the Bag's Route", "Process video frames, track red-region centroids, visualise trajectory segments, and check exit-line crossings. Red candidates do not establish identity."),
     }
     LEVEL_FILES = {
-        1: ("level1_cctv_dark.png", "workshop_code/level1/starter.py", "python workshop_code/level1/starter.py", "outputs/level1/timestamp_threshold.png"),
-        2: ("level2_lab_before.png", "workshop_code/level2/starter.py", "python workshop_code/level2/starter.py", "outputs/level2/detections.png"),
-        3: ("level3_corridor_entry.png", "workshop_code/level3/starter.py", "python workshop_code/level3/starter.py", "outputs/level3/red_regions.png"),
-        4: ("level4_corridor_exit.mp4", "workshop_code/level4/starter.py", "python workshop_code/level4/starter.py", "outputs/level4/exit_tracking.mp4"),
+        1: ("level_codes/level1.py", "python level_codes/level1.py", "outputs/level1/"),
+        2: ("level_codes/level2.py", "python level_codes/level2.py --source PATH", "outputs/level2/"),
+        3: ("level_codes/level3.py", "python level_codes/level3.py", "outputs/level3/"),
+        4: ("level_codes/level4.py", "python level_codes/level4.py", "outputs/level4/"),
     }
 
     def __init__(self):
@@ -319,18 +319,18 @@ class MainWindow(QMainWindow):
         header_layout.addWidget(title_label)
         header_layout.addWidget(summary_label)
         layout.addWidget(header)
-        _evidence_name, starter_path, command, output_path = self.LEVEL_FILES[level]
+        starter_path, command, output_path = self.LEVEL_FILES[level]
         guide = QFrame()
         guide.setObjectName("workshopGuide")
         guide_layout = QHBoxLayout(guide)
         guide_layout.setContentsMargins(10, 6, 10, 6)
         guide_layout.setSpacing(10)
-        student_steps = QLabel(f"Edit {starter_path}  ·  Run: {command}  ·  Output: {output_path}")
+        student_steps = QLabel(f"Open {starter_path} in your editor  ·  Run: {command}  ·  Output: {output_path}")
         student_steps.setWordWrap(True)
         student_steps.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: {FONTS['size_sm']};")
         guide_layout.addWidget(student_steps, 1)
         folder_button = QPushButton("Open level folder")
-        folder_button.setToolTip("Open the workshop folder containing starter.py and solution.py.")
+        folder_button.setToolTip("Open the folder containing all four authoritative teaching scripts.")
         folder_button.clicked.connect(lambda _checked=False, n=level: self.open_workshop_folder(n))
         guide_layout.addWidget(folder_button)
         checkpoint = QPushButton("Checkpoint")
@@ -356,7 +356,12 @@ class MainWindow(QMainWindow):
         return scroll
 
     def record_checkpoint(self, level):
-        title = {1: "Sight Repair", 2: "Reconstruct the Lab Scene", 3: "The Red Bag", 4: "Follow the Trail"}[level]
+        title = {
+            1: "Sight Repair",
+            2: "The Missing Phone",
+            3: "Identify the Red Bag",
+            4: "Track the Red Bag",
+        }[level]
         registry.add(EvidenceEntry(
             module=f"Checkpoint Level {level}: {title}", kind="checkpoint", value="Instructor checkpoint used",
             technique="Instructor-provided checkpoint", observation="Student used the checkpoint to continue the investigation.",
@@ -367,10 +372,16 @@ class MainWindow(QMainWindow):
         self.dashboard.sync_progress_from_registry()
         self.notebook_widget.refresh_table()
         self.report_widget.generate_report()
-        self.show_status_message(f"Level {level} checkpoint recorded. Continue with the next investigation step.", "info")
+        level_name = {
+            2: "The Missing Phone",
+            3: "Identify the Red Bag",
+            4: "Track the Red Bag",
+        }.get(level)
+        label = f"Level {level}: {level_name}" if level_name else f"Level {level}"
+        self.show_status_message(f"{label} checkpoint recorded. Continue with the next investigation step.", "info")
 
     def open_workshop_folder(self, level):
-        folder = Path(__file__).resolve().parents[2] / "workshop_code" / f"level{level}"
+        folder = Path(__file__).resolve().parents[2] / "level_codes"
         if not folder.is_dir():
             self.show_status_message(f"Workshop folder not found: {folder}", "error")
             return False
@@ -478,9 +489,10 @@ class MainWindow(QMainWindow):
         if level == 4:
             title = "Select video evidence"
             file_filter = "Videos (*.mp4 *.mov *.avi *.mkv *.webm *.m4v *.mpeg *.mpg *.wmv)"
-        elif level == 2:
+        elif level in (2, 3):
             title = "Select image or video evidence"
-            file_filter = "Images and videos (*.png *.jpg *.jpeg *.jfif *.bmp *.dib *.webp *.tif *.tiff *.ppm *.pgm *.pnm *.jp2 *.mp4 *.mov *.avi *.mkv *.webm *.m4v *.mpeg *.mpg *.wmv)"
+            supported = LEVEL2_IMAGE_SUFFIXES | LEVEL2_VIDEO_SUFFIXES if level == 2 else IMAGE_SUFFIXES | VIDEO_SUFFIXES
+            file_filter = f"Images and videos ({' '.join('*' + suffix for suffix in sorted(supported))})"
         else:
             title = "Select image evidence"
             file_filter = "Images (*.png *.jpg *.jpeg *.jfif *.bmp *.dib *.webp *.tif *.tiff *.ppm *.pgm *.pnm *.jp2)"
@@ -498,9 +510,9 @@ class MainWindow(QMainWindow):
 
         suffix = Path(path).suffix.lower()
         kind = "video" if suffix in VIDEO_SUFFIXES else "image"
-        required_suffixes = VIDEO_SUFFIXES if level == 4 or (level == 2 and kind == "video") else IMAGE_SUFFIXES
+        required_suffixes = VIDEO_SUFFIXES if level == 4 or (level in (2, 3) and kind == "video") else IMAGE_SUFFIXES
         if suffix not in required_suffixes:
-            expected = "video" if level == 4 else "image"
+            expected = "video" if level == 4 else "image or video" if level in (2, 3) else "image"
             self.show_status_message(f"Level {level} accepts {expected} files only. Choose a supported {expected} format.", "error")
             return False
 
@@ -515,16 +527,19 @@ class MainWindow(QMainWindow):
             loaded = lab.load_frame(frame)
         elif level == 2:
             lab = self.lab_widgets["Object Detection"]
-            loaded = lab.load_media(path, auto_detect=True)
+            loaded = lab.load_media(path, auto_detect=False)
         elif level == 3:
-            frame = read_image_file(path)
-            if frame is None:
-                self.show_status_message("OpenCV could not decode this image. Choose another image file.", "error")
-                return False
             lab = self.lab_widgets["The Red Bag"]
             lab.reset()
             lab.set_evidence_name(str(Path(path).resolve()))
-            loaded = lab.load_evidence_frame(frame)
+            if kind == "video":
+                loaded = lab.load_evidence_video(path)
+            else:
+                frame = read_image_file(path)
+                if frame is None:
+                    self.show_status_message("OpenCV could not decode this image. Choose another image file.", "error")
+                    return False
+                loaded = lab.load_evidence_frame(frame)
         else:
             candidate = InputSource()
             try:
@@ -582,7 +597,12 @@ class MainWindow(QMainWindow):
     def on_level_completed(self, level_name: str):
         self.dashboard.sync_progress_from_registry()
         self.notebook_widget.refresh_table()
-        self.show_status_message(f"{level_name} finding recorded in the Evidence Notebook.", "success")
+        display_name = {
+            "Object Detection": "Level 2: The Missing Phone",
+            "The Red Bag": "Level 3: Identify the Red Bag",
+            "The Final Clue": "Level 4: Track the Red Bag",
+        }.get(level_name, level_name)
+        self.show_status_message(f"{display_name} finding recorded in the Evidence Notebook.", "success")
 
     def on_notebook_changed(self):
         self.dashboard.sync_progress_from_registry()
@@ -670,6 +690,8 @@ class MainWindow(QMainWindow):
         self.status_line.setText(str(message))
 
     def closeEvent(self, event):
+        self.lab_widgets["Object Detection"].shutdown_media()
+        self.lab_widgets["The Red Bag"].shutdown_media()
         for lab in self.lab_widgets.values():
             inference_worker = getattr(lab, "worker", None)
             if inference_worker and inference_worker.isRunning():

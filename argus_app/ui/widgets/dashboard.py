@@ -1,5 +1,7 @@
 """Minimal case landing page and four-level progress overview."""
 
+import re
+
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
@@ -64,9 +66,9 @@ class DashboardWidget(QWidget):
 
     STAGES = [
         (1, "Recover the timestamp", "Eyes Online", ""),
-        (2, "Reconstruct the lab scene", "Object Detection", ""),
-        (3, "Identify the red bag", "The Red Bag", ""),
-        (4, "Track the red bag", "The Final Clue", ""),
+        (2, "The Missing Phone", "Object Detection", ""),
+        (3, "Identify the Red Bag", "The Red Bag", ""),
+        (4, "Track the Red Bag", "The Final Clue", ""),
     ]
 
     def __init__(self, parent=None):
@@ -151,18 +153,27 @@ class DashboardWidget(QWidget):
     def sync_progress_from_registry(self):
         entries = registry.all()
         completed, checkpoints, independent = set(), set(), set()
+        stage_ids = {
+            1: "Eyes Online",
+            2: "Object Detection",
+            3: "The Red Bag",
+            4: "The Final Clue",
+        }
+        legacy_ids = {
+            "eyes online": "Eyes Online",
+            "object detection": "Object Detection",
+            "the missing phone": "Object Detection",
+            "the red bag": "The Red Bag",
+            "the final clue": "The Final Clue",
+            "follow the trail": "The Final Clue",
+        }
         for entry in entries:
             module = entry.module.lower()
-            for level, stage_id, tokens in (
-                (1, "Eyes Online", ("level 1", "eyes online", "checkpoint level 1")),
-                (2, "Object Detection", ("level 2", "object detection", "checkpoint level 2")),
-                (3, "The Red Bag", ("level 3", "red bag", "checkpoint level 3", "color identification")),
-                (4, "The Final Clue", ("level 4", "final clue", "checkpoint level 4", "timeline and tracking")),
-            ):
-                if any(token in module for token in tokens):
-                    completed.add(stage_id)
-                    (checkpoints if entry.completion_mode == "checkpoint" else independent).add(stage_id)
-                    break
+            match = re.match(r"^(?:checkpoint\s+)?level\s+([1-4])\b", module)
+            stage_id = stage_ids.get(int(match.group(1))) if match else legacy_ids.get(module.strip())
+            if stage_id:
+                completed.add(stage_id)
+                (checkpoints if entry.completion_mode == "checkpoint" else independent).add(stage_id)
         checkpoints.difference_update(independent)
         self.completed_stages = completed
         self.checkpoint_stages = checkpoints

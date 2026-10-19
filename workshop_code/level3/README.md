@@ -1,3 +1,0 @@
-# Level 3 — The Red Bag
-
-**Concept:** BGR to HSV, `inRange`, hue wrap-around, morphological noise reduction, area-filtered contours, and candidate boxes. **Evidence:** `assets/evidence/level3_corridor_entry.png`. Complete the TODOs in `starter.py`, then run `python workshop_code/level3/starter.py`. Inspect `outputs/level3/red_mask.png` and `red_regions.png`. Reference: `solution.py`. A red mask may select a fire extinguisher or other distractor; it does not recognize the backpack or its pale patch, identify a person, or establish ownership. Compare with the inventory record only if `assets/records/bag_inventory.txt` is actually supplied.

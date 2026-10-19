@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
 
 from evidence.registry import EvidenceEntry, registry
 from evidence.artifacts import documentary_records, missing_manifest_assets
+from evidence.labels import display_module_label
 from ui.style import COLORS, FONTS, RADIUS
 
 
@@ -77,8 +78,8 @@ class EvidenceNotebookWidget(QWidget):
         form.setVerticalSpacing(6)
         self.module_combo = QComboBox()
         self.module_combo.addItems([
-            "Level 1: Sight Repair", "Level 2: Object Detection", "Level 3: Red Bag",
-            "Level 4: Red Bag Tracking", "E-05: Purge and Session Records", "General Evidence",
+            "Level 1: Sight Repair", "Level 2: The Missing Phone", "Level 3: Identify the Red Bag",
+            "Level 4: Track the Red Bag", "E-05: Purge and Session Records", "General Evidence",
         ])
         self.uncertainty_combo = QComboBox()
         self.uncertainty_combo.addItems(["Low", "Medium", "High"])
@@ -191,11 +192,11 @@ class EvidenceNotebookWidget(QWidget):
         self.empty_state.setVisible(not entries)
         self.table.setVisible(bool(entries))
         for row, entry in enumerate(entries):
-            source = entry.source_filename or entry.module
+            source = entry.source_filename or display_module_label(entry.module)
             method = entry.technique or entry.kind
             observed = entry.observation or entry.description or str(entry.value)
             values = [entry.evidence_id, source, f"{observed}\nMethod: {method}", entry.interpretation or "Pending interpretation", entry.uncertainty]
-            details = f"{entry.timestamp}\n{entry.module}\n{method}\nSource: {entry.source_path or entry.source_filename}\nSource time: {entry.source_timestamp}\nFrame: {entry.frame_number}\nOutput: {entry.output_path}\nLimitation: {entry.limitation}\nUnresolved: {entry.unresolved_question}\nCompletion: {entry.completion_mode}"
+            details = f"{entry.timestamp}\n{display_module_label(entry.module)}\n{method}\nSource: {entry.source_path or entry.source_filename}\nSource time: {entry.source_timestamp}\nFrame: {entry.frame_number}\nOutput: {entry.output_path}\nLimitation: {entry.limitation}\nUnresolved: {entry.unresolved_question}\nCompletion: {entry.completion_mode}"
             for column, value in enumerate(values):
                 item = QTableWidgetItem(str(value))
                 item.setToolTip(details)

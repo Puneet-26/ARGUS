@@ -1,3 +1,0 @@
-"""
-ARGUS Labs - Reference solutions.
-"""

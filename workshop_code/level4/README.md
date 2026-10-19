@@ -1,3 +1,0 @@
-# Level 4 — Follow the Trail
-
-**Concept:** video frames, wrapped red HSV mask, morphology, area-filtered candidates, centroid continuity, segmented trajectory, and a one-time exit-line check. **Evidence:** `assets/evidence/level4_corridor_exit.mp4` (not present until supplied). Complete the crossing test TODO in `starter.py`, then run `python workshop_code/level4/starter.py`. The reference writes an annotated video and event summary under `outputs/level4/`; all times are clip-relative. A missed detection breaks the continuity segment. Candidate switching, red distractors, or occlusion can make a route ambiguous; a crossing does not identify the bag's carrier.

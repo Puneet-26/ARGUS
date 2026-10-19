@@ -4,9 +4,7 @@
   "evidence_directory": "assets/evidence",
   "records_directory": "assets/records",
   "assets": [
-    {"id":"E-01","filename":"level1_cctv_dark.png","kind":"image","level":1,"purpose":"Dark CCTV frame with timestamp for enhancement exercise","status":"missing_until_supplied"},
-    {"id":"E-02","filename":"level2_lab_before.png","kind":"image","level":2,"purpose":"Supplied laboratory image for YOLO object detection","status":"missing_until_supplied"},
-    {"id":"E-02","filename":"level2_lab_after.png","kind":"image","level":2,"purpose":"Optional second laboratory image for independent object-detection practice; not used for before/after comparison","status":"missing_until_supplied"},
+    {"id":"E-01","filename":"EVIDENCE-01.png","kind":"image","level":1,"purpose":"Dark CCTV frame with timestamp for enhancement exercise; keep the original extension when renaming","status":"missing_until_supplied"},
     {"id":"E-03","filename":"level3_corridor_entry.png","kind":"image","level":3,"purpose":"Corridor image containing the equipment bag and any visible distractors","status":"missing_until_supplied"},
     {"id":"E-04","filename":"level4_corridor_exit.mp4","kind":"video","level":4,"purpose":"Corridor video for red-region motion and exit-line crossing","status":"missing_until_supplied"},
     {"id":"RECORD-01","filename":"bag_inventory.txt","kind":"text_record","level":3,"purpose":"Inventory record describing the distinctive repair patch and its association","status":"missing_until_supplied"},

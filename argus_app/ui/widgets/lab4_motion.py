@@ -1,15 +1,16 @@
 """Level 4: review a video timeline and inspect motion line crossings."""
 
-import cv2
-import math
+import os
 from pathlib import Path
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
+    QCheckBox,
     QFrame,
     QGridLayout,
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QSlider,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -20,6 +21,7 @@ from evidence.registry import EvidenceEntry, registry
 from evidence.artifacts import save_image
 from ui.style import COLORS, FONTS, RADIUS
 from ui.widgets.lab_base import ImageDisplayLabel, LabWidget, MediaTimelineControls
+from level_codes.level4 import process_tracking_frame
 
 
 class Lab4MotionWidget(LabWidget):
@@ -31,7 +33,14 @@ class Lab4MotionWidget(LabWidget):
 
     def __init__(self, parent=None):
         self.min_area = 500
-        self.exit_line_fraction = 0.60
+        self.max_step_fraction = 0.18
+        configured_line = os.environ.get("ARGUS_LEVEL4_EXIT_LINE_X_FRACTION", "").strip()
+        try:
+            self.exit_line_fraction = float(configured_line) if configured_line else None
+        except ValueError:
+            self.exit_line_fraction = None
+        if self.exit_line_fraction is not None and not 0 <= self.exit_line_fraction <= 1:
+            self.exit_line_fraction = None
         self.last_frame = None
         self.last_results = None
         self.frame_number = 0
@@ -46,7 +55,7 @@ class Lab4MotionWidget(LabWidget):
         self.red_trail = []
         self.red_segments = []
         self.track_note = ""
-        super().__init__("The Final Clue", parent)
+        super().__init__("Level 4: Track the Red Bag", parent)
         self.reset()
 
     def setup_ui(self):
@@ -59,6 +68,39 @@ class Lab4MotionWidget(LabWidget):
         self.media_controls.play_pause_requested.connect(self.play_pause_requested.emit)
         self.media_controls.seek_requested.connect(self.seek_requested.emit)
         root.addWidget(self.media_controls)
+
+        tracking_controls = QGridLayout()
+        self.area_slider = QSlider(Qt.Horizontal)
+        self.area_slider.setRange(0, 50)
+        self.area_slider.setValue(5)
+        self.area_slider.setToolTip("Ignore red contours smaller than this area.")
+        self.jump_slider = QSlider(Qt.Horizontal)
+        self.jump_slider.setRange(5, 40)
+        self.jump_slider.setValue(18)
+        self.jump_slider.setToolTip("Maximum allowed centroid movement between consecutive frames, as a fraction of frame diagonal.")
+        self.area_label = QLabel()
+        self.jump_label = QLabel()
+        self.entrance_line_checkbox = QCheckBox("Evaluate doorway line crossings")
+        self.entrance_line_checkbox.setChecked(self.exit_line_fraction is not None)
+        self.line_slider = QSlider(Qt.Horizontal)
+        self.line_slider.setRange(0, 1000)
+        self.line_slider.setValue(round(self.exit_line_fraction * 1000) if self.exit_line_fraction is not None else 600)
+        self.line_slider.setEnabled(self.exit_line_fraction is not None)
+        self.line_slider.setToolTip("Horizontal line position as a fraction of frame width. Set this from the actual Lab 4B doorway.")
+        self.line_label = QLabel()
+        tracking_controls.addWidget(self.area_label, 0, 0)
+        tracking_controls.addWidget(self.area_slider, 0, 1)
+        tracking_controls.addWidget(self.jump_label, 1, 0)
+        tracking_controls.addWidget(self.jump_slider, 1, 1)
+        tracking_controls.addWidget(self.entrance_line_checkbox, 2, 0)
+        tracking_controls.addWidget(self.line_slider, 2, 1)
+        tracking_controls.addWidget(self.line_label, 3, 0, 1, 2)
+        root.addLayout(tracking_controls)
+        self.area_slider.valueChanged.connect(self._tracking_parameters_changed)
+        self.jump_slider.valueChanged.connect(self._tracking_parameters_changed)
+        self.line_slider.valueChanged.connect(self._tracking_parameters_changed)
+        self.entrance_line_checkbox.toggled.connect(self._tracking_parameters_changed)
+        self._tracking_parameters_changed()
 
         views = QGridLayout()
         views.setContentsMargins(0, 0, 0, 0)
@@ -79,7 +121,7 @@ class Lab4MotionWidget(LabWidget):
         root.addWidget(workspace, 1)
 
         actions = QHBoxLayout()
-        self.analysis_status = QLabel("The line marks the configured exit. Red colour and a crossing do not identify a person.")
+        self.analysis_status = QLabel("Adjust the tracking sliders below. Enable the doorway line only after locating Lab 4B in the supplied video.")
         self.analysis_status.setWordWrap(True)
         self.analysis_status.setObjectName("pageSummary")
         actions.addWidget(self.analysis_status, 1)
@@ -136,6 +178,28 @@ class Lab4MotionWidget(LabWidget):
     def set_playing(self, playing):
         self.media_controls.set_playing(playing)
 
+    def _tracking_parameters_changed(self, *_args):
+        self.min_area = self.area_slider.value() * 100
+        self.max_step_fraction = self.jump_slider.value() / 100.0
+        use_line = self.entrance_line_checkbox.isChecked()
+        self.exit_line_fraction = self.line_slider.value() / 1000.0 if use_line else None
+        self.area_label.setText(f"Minimum red contour area: {self.min_area} px²")
+        self.jump_label.setText(f"Maximum centroid jump: {self.max_step_fraction:.0%} of frame diagonal")
+        self.line_label.setText(
+            f"Doorway line at {self.exit_line_fraction:.1%} of frame width" if use_line
+            else "Doorway line off · inspect the supplied footage before enabling crossings"
+        )
+        self.line_slider.setEnabled(use_line)
+        if self.last_frame is not None and self.source_kind == "video":
+            # A parameter change starts a fresh segment so it cannot create a
+            # crossing by comparing this frame against a result from old settings.
+            if self.red_trail:
+                self.red_segments.append(self.red_trail)
+                self.red_trail = []
+            self.previous_red_centroid = None
+            self.last_processed_frame_number = self.frame_number - 1
+            self.process_frame(self.last_frame.copy())
+
     def set_source_path(self, path):
         self.source_path = str(path or "")
 
@@ -152,19 +216,8 @@ class Lab4MotionWidget(LabWidget):
     def refresh_current_frame(self, *_args):
         if self.last_frame is None or self.last_results is None:
             return
-        height, width = self.last_frame.shape[:2]
-        x = int(width * self.exit_line_fraction)
-        line_start, line_end = (x, 0), (x, height - 1)
-        output = self.last_frame.copy()
-        cv2.line(output, line_start, line_end, (255, 180, 0), 2)
-        for segment in self.red_segments + ([self.red_trail] if self.red_trail else []):
-            for start, end in zip(segment[-120:], segment[-119:]):
-                cv2.line(output, start, end, (0, 255, 0), 2)
-        tracked = self.last_results.get("tracked_objects", {})
-        if tracked and tracked.get(1, {}).get("centroid"):
-            cv2.circle(output, tracked[1]["centroid"], 6, (0, 255, 0), -1)
-        self.last_results["result"] = output
-        self.result_display.set_image(self.cv_to_pixmap(output))
+        # The teaching pipeline owns all tracking annotations; the UI only shows them.
+        self.result_display.set_image(self.cv_to_pixmap(self.last_results["result"]))
 
     def reset(self):
         try:
@@ -199,85 +252,55 @@ class Lab4MotionWidget(LabWidget):
             self.last_processed_frame_number = self.frame_number
             self.last_frame = frame.copy()
             height, width = frame.shape[:2]
-            x = int(width * self.exit_line_fraction)
-            hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-            red_low = cv2.inRange(hsv, (0, 70, 40), (10, 255, 255))
-            red_high = cv2.inRange(hsv, (170, 70, 40), (179, 255, 255))
-            mask = cv2.bitwise_or(red_low, red_high)
-            kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
-            mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
-            mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
-            contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-            frame_area = max(1, width * height)
-            contours = [contour for contour in contours if self.min_area <= cv2.contourArea(contour) <= frame_area * 0.75]
-            result = frame.copy()
-            cv2.line(result, (x, 0), (x, height - 1), (255, 180, 0), 2)
-            crossed = False
-            centroid = None
-            if contours:
-                candidates = []
-                for candidate in contours:
-                    moments = cv2.moments(candidate)
-                    if moments["m00"]:
-                        center = (int(moments["m10"] / moments["m00"]), int(moments["m01"] / moments["m00"]))
-                        candidates.append((candidate, center))
-                selected = None
-                if self.previous_red_centroid is not None and candidates:
-                    max_step = max(40.0, math.hypot(width, height) * 0.18)
-                    selected = min(candidates, key=lambda item: math.dist(self.previous_red_centroid, item[1]))
-                    if math.dist(self.previous_red_centroid, selected[1]) > max_step:
-                        selected = None
-                        self.track_note = "Candidate jump exceeded the continuity limit; tracking is ambiguous."
-                elif candidates:
-                    selected = max(candidates, key=lambda item: cv2.contourArea(item[0]))
-                    self.track_note = "Largest red candidate seeded the track; its physical identity is unverified."
-                if selected is None:
-                    self.previous_red_centroid = None
-                    if self.red_trail:
-                        self.red_segments.append(self.red_trail)
-                        self.red_trail = []
-                else:
-                    contour, centroid = selected
-                    for candidate, center in candidates:
-                        bx, by, bw, bh = cv2.boundingRect(candidate)
-                        cv2.rectangle(result, (bx, by), (bx + bw, by + bh), (120, 120, 120), 1)
-                    if len(candidates) > 1 and self.previous_red_centroid is None:
-                        self.track_note = f"{len(candidates)} candidates; largest area was selected. Identity is ambiguous."
-                if selected is not None:
-                    contour = selected[0]
-                    centroid = selected[1]
-                    if self.previous_red_centroid is not None:
-                        old_x = self.previous_red_centroid[0]
-                        crossed = (old_x < x <= centroid[0]) or (old_x > x >= centroid[0])
-                    self.previous_red_centroid = centroid
-                    self.red_trail.append(centroid)
-                    bx, by, bw, bh = cv2.boundingRect(contour)
-                    cv2.rectangle(result, (bx, by), (bx + bw, by + bh), (0, 220, 255), 2)
-                    cv2.circle(result, centroid, 6, (0, 255, 0), -1)
-            else:
-                self.previous_red_centroid = None
-                self.track_note = "No valid red candidate in this frame; track continuity is interrupted."
-                if self.red_trail:
-                    self.red_segments.append(self.red_trail)
-                    self.red_trail = []
-            segments = self.red_segments + ([self.red_trail] if self.red_trail else [])
-            for segment in segments:
-                for start, end in zip(segment[-120:], segment[-119:]):
-                    cv2.line(result, start, end, (0, 255, 0), 2)
+            x = round(width * self.exit_line_fraction) if self.exit_line_fraction is not None else None
+            pipeline = process_tracking_frame(
+                frame,
+                previous_centroid=self.previous_red_centroid,
+                trail=self.red_trail,
+                segments=self.red_segments,
+                line_x=x,
+                min_area=self.min_area,
+                max_step_fraction=self.max_step_fraction,
+            )
+            self.previous_red_centroid = pipeline["previous_centroid"]
+            self.red_trail = pipeline["trail"]
+            self.red_segments = pipeline["segments"]
+            continuity_note = self.track_note
+            self.track_note = pipeline["note"]
+            if continuity_note:
+                self.track_note = continuity_note + " " + self.track_note
+            centroid = pipeline["centroid"]
+            crossed = pipeline["crossed"]
+            candidates = pipeline["candidates"]
             newly_crossed = crossed and not self.crossing_recorded
             cross_count = self.previous_cross_count + int(newly_crossed)
-            results = {"result": result, "tracked_objects": ({1: {"centroid": centroid}} if centroid else {}), "cross_count": cross_count, "crossed_ids": ([1] if newly_crossed else []), "candidates": len(contours), "centroid": centroid, "red_segments": segments}
+            segments = self.red_segments + ([self.red_trail] if self.red_trail else [])
+            results = {
+                "result": pipeline["result"],
+                "mask": pipeline["mask"],
+                "tracked_objects": ({1: {"centroid": centroid}} if centroid else {}),
+                "cross_count": cross_count,
+                "crossed_ids": ([1] if newly_crossed else []),
+                "candidates": pipeline["candidate_count"],
+                "centroid": centroid,
+                "red_segments": segments,
+            }
             self.last_results = results
             self.original_display.set_image(self.cv_to_pixmap(frame))
             self.result_display.set_image(self.cv_to_pixmap(results.get("result", frame)))
             self.notebook_button.setEnabled(True)
             object_count = len(results.get("tracked_objects", {}))
             cross_count = int(results.get("cross_count", 0))
-            status = f"{len(contours)} red candidate(s) · {cross_count} supported exit-line crossing(s)."
+            if x is None:
+                status = f"{pipeline["candidate_count"]} red candidate(s) · entrance line not configured; crossings are not evaluated."
+            else:
+                status = f"{pipeline["candidate_count"]} red candidate(s) · {cross_count} supported exit-line crossing(s)."
             if centroid is None:
                 status += " No centroid is tracked in this frame."
             if self.track_note:
                 status += " " + self.track_note
+            if x is None:
+                status += " Inspect the real video and set ARGUS_LEVEL4_EXIT_LINE_X_FRACTION to the Lab 4B doorway position."
             self.analysis_status.setText(status + " Red colour does not identify its carrier.")
             if newly_crossed:
                 self.crossing_recorded = True
@@ -310,10 +333,10 @@ class Lab4MotionWidget(LabWidget):
             return
         centroid = self.last_results.get("centroid")
         registry.add(EvidenceEntry(
-            module="Level 4: Red Bag Tracking",
+            module="Level 4: Track the Red Bag",
             kind="video_tracking",
-            value={"candidate_count": self.last_results.get("candidates", 0), "centroid": centroid, "red_segments": self.last_results.get("red_segments", []), "line_crossings": cross_count},
-            technique=f"OpenCV wrapped red HSV mask, morphology, area-filtered contours, nearest-centroid continuity (fixed exit line at {self.exit_line_fraction:.0%} frame width)",
+            value={"candidate_count": self.last_results.get("candidates", 0), "centroid": centroid, "red_segments": self.last_results.get("red_segments", []), "line_crossings": cross_count, "entrance_line_x_fraction": self.exit_line_fraction, "minimum_contour_area": self.min_area, "max_centroid_jump_fraction": self.max_step_fraction},
+            technique="OpenCV wrapped red HSV mask, morphology, area-filtered contours, nearest-centroid continuity" + (f" (configured line at {self.exit_line_fraction:.0%} frame width)" if self.exit_line_fraction is not None else " (entrance line not configured; crossings not evaluated)"),
             observation=self.analysis_status.text(),
             interpretation="The selected contour is a red candidate followed by centroid proximity between adjacent readable frames. A supported line crossing describes clip-relative movement only; it does not identify the bag or its carrier.",
             uncertainty="High" if self.last_results.get("candidates", 0) != 1 or centroid is None else "Medium",
@@ -340,7 +363,7 @@ class Lab4MotionWidget(LabWidget):
         self.media_controls.reset()
         self.original_display.set_image(None)
         self.result_display.set_image(None)
-        self.analysis_status.setText("The line marks the configured exit. Red colour and a crossing do not identify a person.")
+        self.analysis_status.setText("Configure the entrance line from the actual video before evaluating crossings. Red colour does not identify a person.")
         self.events_table.setRowCount(0)
         self.notebook_button.setEnabled(False)
         self.reset()
