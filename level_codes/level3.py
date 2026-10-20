@@ -9,6 +9,8 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT_DIR = ROOT / "outputs" / "level3"
+DEFAULT_MORPH_KERNEL = 3
+DEFAULT_MIN_AREA = 500
 
 VIDEO_SUFFIXES = {".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v", ".mpeg", ".mpg", ".wmv", ".3gp", ".flv", ".ts", ".mts", ".m2ts", ".ogv"}
 
@@ -214,6 +216,28 @@ def process_color_segmentation(image, h_min, h_max, s_min, s_max, v_min, v_max,
     # called a backpack: semantic identification remains a human comparison.
     results['result'] = draw_candidate_overlay(image, contours)
 
+    return results
+
+
+def process_color_preset(image, color_name):
+    """Run the workshop's fixed, beginner-friendly segmentation preset."""
+    if color_name not in ("Red", "Green", "Blue"):
+        raise ValueError("Choose Red, Green, or Blue as the target colour.")
+    preset = COLOR_PRESETS[color_name]
+    results = process_color_segmentation(
+        image,
+        preset["h_min"], preset["h_max"],
+        preset["s_min"], preset["s_max"],
+        preset["v_min"], preset["v_max"],
+        morph_kernel=DEFAULT_MORPH_KERNEL,
+        min_area=DEFAULT_MIN_AREA,
+    )
+    results["parameters"] = {
+        "target_color": color_name,
+        **preset,
+        "morph_kernel": DEFAULT_MORPH_KERNEL,
+        "min_area": DEFAULT_MIN_AREA,
+    }
     return results
 
 

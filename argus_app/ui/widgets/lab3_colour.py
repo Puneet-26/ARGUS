@@ -3,14 +3,13 @@
 import numpy as np
 from pathlib import Path
 from PySide6.QtCore import Qt, QRunnable, QThread, QThreadPool, QObject, Signal, Slot
-from PySide6.QtWidgets import QCheckBox, QComboBox, QFrame, QGridLayout, QHBoxLayout, QLabel, QPushButton, QSlider, QSplitter, QVBoxLayout
+from PySide6.QtWidgets import QComboBox, QFrame, QHBoxLayout, QLabel, QPushButton, QSlider, QSplitter, QVBoxLayout
 
 from evidence.artifacts import save_image
 from evidence.registry import EvidenceEntry, registry
 from ui.style import COLORS, FONTS
 from ui.widgets.lab_base import ImageDisplayLabel, LabWidget
 from ui.widgets.lab2_detection import VIDEO_SUFFIXES, VideoPlaybackWorker
-from level_codes.level3 import COLOR_PRESETS
 
 
 class SegmentationJobSignals(QObject):
@@ -32,9 +31,7 @@ class SegmentationJob(QRunnable):
 
     def run(self):
         try:
-            result = self.module.process_color_segmentation(
-                self.frame, *self.parameters[:6], morph_kernel=self.parameters[6], min_area=self.parameters[7]
-            )
+            result = self.module.process_color_preset(self.frame, self.parameters)
             error = ""
         except Exception as exc:
             result = None
@@ -64,7 +61,6 @@ class Lab3ColourWidget(LabWidget):
         self.video_fps = 0.0
         self.video_frame_count = 0
         self._video_generation = 0
-        self.live_segmentation = True
         self._segmentation_pool = None
         self._segmentation_busy = False
         self._segmentation_pending = None
@@ -104,21 +100,41 @@ class Lab3ColourWidget(LabWidget):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(8)
 
+        controls = QHBoxLayout()
+        controls.setSpacing(10)
+        controls.addWidget(QLabel("Target colour:"))
+        self.color_preset_combo = QComboBox()
+        self.color_preset_combo.addItems(["Red", "Green", "Blue"])
+        self.color_preset_combo.currentTextChanged.connect(self._on_color_preset_changed)
+        controls.addWidget(self.color_preset_combo)
+        self.apply_button = QPushButton("Detect Colour")
+        self.apply_button.setObjectName("primaryButton")
+        self.apply_button.setEnabled(False)
+        self.apply_button.clicked.connect(self.run_colour_mask)
+        controls.addWidget(self.apply_button)
+        controls.addWidget(QLabel("View:"))
+        self.result_mode = QComboBox()
+        self.result_mode.addItems(["Candidate regions", "Cleaned mask"])
+        self.result_mode.currentTextChanged.connect(self._show_result_mode)
+        self.result_mode.setEnabled(False)
+        controls.addWidget(self.result_mode)
+        self.log_button = QPushButton("Record result")
+        self.log_button.setEnabled(False)
+        self.log_button.clicked.connect(self.log_to_evidence)
+        controls.addWidget(self.log_button)
+        controls.addStretch(1)
+        root.addLayout(controls)
+
         views = QSplitter(Qt.Horizontal)
         views.setChildrenCollapsible(False)
         self.original_display = ImageDisplayLabel("Open corridor image or video evidence to begin.")
         self.original_display.set_upload_enabled(True, "image or video")
         self.result_display = ImageDisplayLabel("Run segmentation to inspect the mask or candidates.")
-        views.addWidget(self._panel("SOURCE IMAGE", self.original_display))
-        result_panel = self._panel("PROCESSING OUTPUT", self.result_display)
-        self.result_mode = QComboBox()
-        self.result_mode.addItems(["Candidate regions", "Cleaned mask"])
-        self.result_mode.currentTextChanged.connect(self._show_result_mode)
-        result_panel.layout().insertWidget(1, self.result_mode)
+        views.addWidget(self._panel("ORIGINAL IMAGE / VIDEO", self.original_display))
+        result_panel = self._panel("PROCESSED RESULT", self.result_display)
         views.addWidget(result_panel)
         views.setStretchFactor(0, 1)
         views.setStretchFactor(1, 1)
-        views.setSizes([1, 1])
         root.addWidget(views, 1)
 
         self.video_navigation = QHBoxLayout()
@@ -130,11 +146,6 @@ class Lab3ColourWidget(LabWidget):
         self.restart_button.setEnabled(False)
         self.restart_button.clicked.connect(self.restart_video)
         self.video_navigation.addWidget(self.restart_button)
-        self.live_checkbox = QCheckBox("Live segmentation during playback")
-        self.live_checkbox.setChecked(True)
-        self.live_checkbox.setToolTip("Refresh HSV mask and candidate contours for every video frame.")
-        self.live_checkbox.toggled.connect(self._set_live_segmentation)
-        self.video_navigation.addWidget(self.live_checkbox)
         self.frame_slider = QSlider(Qt.Horizontal)
         self.frame_slider.setRange(0, 0)
         self.frame_slider.setEnabled(False)
@@ -144,84 +155,10 @@ class Lab3ColourWidget(LabWidget):
         self.video_navigation.addWidget(self.frame_position)
         root.addLayout(self.video_navigation)
 
-        color_selector_row = QHBoxLayout()
-        color_selector_row.setSpacing(10)
-        color_selector_row.addWidget(QLabel("Target colour:"))
-        self.color_preset_combo = QComboBox()
-        self.color_preset_combo.addItems(["Red", "Blue", "Green", "Yellow", "Orange", "Custom"])
-        self.color_preset_combo.currentTextChanged.connect(self._on_color_preset_changed)
-        color_selector_row.addWidget(self.color_preset_combo)
-        color_selector_row.addStretch(1)
-        root.addLayout(color_selector_row)
-
-        self.h_min_slider = QSlider(Qt.Horizontal)
-        self.h_min_slider.setRange(0, 179)
-        self.h_min_slider.setValue(170)
-
-        self.h_max_slider = QSlider(Qt.Horizontal)
-        self.h_max_slider.setRange(0, 179)
-        self.h_max_slider.setValue(10)
-
-        self.saturation_slider = QSlider(Qt.Horizontal)
-        self.saturation_slider.setRange(0, 255)
-        self.saturation_slider.setValue(120)
-
-        self.value_slider = QSlider(Qt.Horizontal)
-        self.value_slider.setRange(0, 255)
-        self.value_slider.setValue(25)
-
-        self.morphology_slider = QSlider(Qt.Horizontal)
-        self.morphology_slider.setRange(1, 5)
-        self.morphology_slider.setValue(1)
-
-        self.min_area_slider = QSlider(Qt.Horizontal)
-        self.min_area_slider.setRange(0, 50)
-        self.min_area_slider.setValue(5)
-
-        self.all_sliders = (
-            self.h_min_slider, self.h_max_slider, self.saturation_slider,
-            self.value_slider, self.morphology_slider, self.min_area_slider
-        )
-        self.parameter_labels = [QLabel() for _ in range(6)]
-        parameter_grid = QGridLayout()
-        parameter_grid.addWidget(self.parameter_labels[0], 0, 0)
-        parameter_grid.addWidget(self.h_min_slider, 0, 1)
-        parameter_grid.addWidget(self.parameter_labels[1], 0, 2)
-        parameter_grid.addWidget(self.h_max_slider, 0, 3)
-
-        parameter_grid.addWidget(self.parameter_labels[2], 1, 0)
-        parameter_grid.addWidget(self.saturation_slider, 1, 1)
-        parameter_grid.addWidget(self.parameter_labels[3], 1, 2)
-        parameter_grid.addWidget(self.value_slider, 1, 3)
-
-        parameter_grid.addWidget(self.parameter_labels[4], 2, 0)
-        parameter_grid.addWidget(self.morphology_slider, 2, 1)
-        parameter_grid.addWidget(self.parameter_labels[5], 2, 2)
-        parameter_grid.addWidget(self.min_area_slider, 2, 3)
-        root.addLayout(parameter_grid)
-
-        for slider in self.all_sliders:
-            slider.setEnabled(False)
-            slider.valueChanged.connect(self._on_slider_changed)
-            slider.sliderReleased.connect(self.run_colour_mask)
-        self._update_parameter_labels()
-
-        controls = QHBoxLayout()
-        self.contour_info = QLabel("HSV → color ranges → cleaned mask → area-filtered candidates.")
+        self.contour_info = QLabel("Choose a colour and select Detect Colour.")
         self.contour_info.setWordWrap(True)
         self.contour_info.setObjectName("pageSummary")
-        controls.addWidget(self.contour_info, 1)
-        self.apply_button = QPushButton("Segment Red regions")
-        self.apply_button.setObjectName("primaryButton")
-        self.apply_button.setEnabled(False)
-        self.apply_button.clicked.connect(self.run_colour_mask)
-        controls.addWidget(self.apply_button)
-        self.log_button = QPushButton("Record result")
-        self.log_button.setEnabled(False)
-        self.log_button.clicked.connect(self.log_to_evidence)
-        controls.addWidget(self.log_button)
-        root.addLayout(controls)
-        self.result_mode.setEnabled(False)
+        root.addWidget(self.contour_info)
 
     @staticmethod
     def _panel(title, display):
@@ -260,8 +197,8 @@ class Lab3ColourWidget(LabWidget):
         self.original_display.setText("Open corridor image or video evidence to begin.")
         self.result_display.set_image(None)
         self.result_display.setText("Run segmentation to inspect the mask or candidates.")
-        self.contour_info.setText("HSV → wrapped red ranges → cleaned mask → area-filtered candidates.")
-        self.apply_button.setText(f"Segment {self.color_preset_combo.currentText()} regions")
+        self.contour_info.setText("Choose a colour and select Detect Colour.")
+        self.apply_button.setText("Detect Colour")
         self.apply_button.setEnabled(False)
         self.log_button.setEnabled(False)
         self.result_mode.setEnabled(False)
@@ -271,8 +208,6 @@ class Lab3ColourWidget(LabWidget):
         self.frame_slider.setRange(0, 0)
         self.frame_slider.setEnabled(False)
         self.frame_position.setText("Image mode · video controls activate for a video.")
-        for slider in self.all_sliders:
-            slider.setEnabled(False)
 
     def load_evidence_frame(self, frame, frame_number=None, preserve_results=False):
         if frame is None or not isinstance(frame, np.ndarray) or frame.size == 0 or frame.ndim != 3 or frame.shape[2] != 3:
@@ -288,17 +223,14 @@ class Lab3ColourWidget(LabWidget):
             self.original_display.set_image(self.cv_to_pixmap(self.last_frame))
             self.result_display.set_image(None)
         height, width = self.last_frame.shape[:2]
-        color_name = self.color_preset_combo.currentText()
         if self.media_kind == "video" and self.current_frame_number is not None:
             self._update_video_position(self.current_frame_number)
             if not preserve_results:
-                self.contour_info.setText(f"{Path(self.evidence_name).name} · frame {self.current_frame_number:,} · {width} × {height} · select Segment {color_name} regions.")
+                self.contour_info.setText(f"{Path(self.evidence_name).name} · frame {self.current_frame_number:,} · select Detect Colour.")
         else:
             self.frame_position.setText(f"Image · {width} × {height}")
-            self.contour_info.setText(f"{Path(self.evidence_name).name if self.evidence_name else 'Image'} · {width} × {height} · select Segment {color_name} regions.")
+            self.contour_info.setText(f"{Path(self.evidence_name).name if self.evidence_name else 'Image'} · {width} × {height} · select Detect Colour.")
         self.apply_button.setEnabled(True)
-        for slider in self.all_sliders:
-            slider.setEnabled(True)
         if not preserve_results:
             self.log_button.setEnabled(False)
             self.result_mode.setEnabled(False)
@@ -324,13 +256,11 @@ class Lab3ColourWidget(LabWidget):
         self.original_display.set_image(None)
         self.original_display.setText("Opening video and decoding its first frame…")
         self.result_display.set_image(None)
-        self.result_display.setText(f"Select a frame, then segment {self.color_preset_combo.currentText()} regions.")
+        self.result_display.setText("Waiting for the first video frame…")
         self.contour_info.setText(f"{video.name} · opening video…")
         self.apply_button.setEnabled(False)
         self.log_button.setEnabled(False)
         self.result_mode.setEnabled(False)
-        for slider in self.all_sliders:
-            slider.setEnabled(False)
         self.play_button.setText("Play")
         self.play_button.setEnabled(False)
         self.restart_button.setEnabled(False)
@@ -351,16 +281,13 @@ class Lab3ColourWidget(LabWidget):
         self.play_button.setEnabled(True)
         self.restart_button.setEnabled(True)
         self.load_evidence_frame(frame, frame_number)
-        if self.live_checkbox.isChecked():
-            self.run_colour_mask()
+        self.run_colour_mask()
 
     @Slot(object, int, int)
     def on_video_frame(self, frame, frame_number, generation):
         if self.media_kind == "video" and generation == self._video_generation:
-            live = self.live_checkbox.isChecked()
-            self.load_evidence_frame(frame, frame_number, preserve_results=live)
-            if self.live_checkbox.isChecked():
-                self._schedule_segmentation(frame, frame_number)
+            self.load_evidence_frame(frame, frame_number, preserve_results=True)
+            self._schedule_segmentation(frame, frame_number)
 
     @Slot(str, int)
     def on_video_failed(self, message, generation):
@@ -387,22 +314,6 @@ class Lab3ColourWidget(LabWidget):
             self._segmentation_revision += 1
             self._segmentation_pending = None
             self.seek_requested.emit(0, self._video_generation)
-
-    def _set_live_segmentation(self, enabled):
-        self.live_segmentation = bool(enabled)
-        if enabled and self.media_kind == "video" and self.last_frame is not None:
-            self._segmentation_revision += 1
-            self._schedule_segmentation(self.last_frame, self.current_frame_number)
-        elif not enabled and self.media_kind == "video":
-            self._segmentation_revision += 1
-            self._segmentation_pending = None
-            if self.last_frame is not None:
-                self.original_display.set_image(self.cv_to_pixmap(self.last_frame))
-            self.last_results = None
-            self.result_display.set_image(None)
-            self.result_display.setText("Live segmentation is off. Select Segment red regions to inspect a frame.")
-            self.log_button.setEnabled(False)
-            self.result_mode.setEnabled(False)
 
     def pause_playback(self):
         self.set_playing_requested.emit(False)
@@ -449,12 +360,12 @@ class Lab3ColourWidget(LabWidget):
             self.contour_info.setText("OpenCV segmentation code is unavailable.")
             self.log_message.emit("Colour analysis is unavailable because its OpenCV module did not load.", "error")
             return {"output": None, "error": "Segmentation unavailable", "success": False}
-        if self.media_kind == "video" and self.live_checkbox.isChecked():
+        if self.media_kind == "video":
             self._segmentation_revision += 1
             self._schedule_segmentation(self.last_frame, self.current_frame_number)
             return {"output": None, "success": True, "queued": True}
         try:
-            results = self._process_segmentation(self.last_frame, self._segmentation_parameters())
+            results = self._process_segmentation(self.last_frame, self.color_preset_combo.currentText())
             self._apply_segmentation_result(self.last_frame, self.current_frame_number, results)
             return {"output": results["result"], "success": True}
         except Exception as exc:
@@ -466,51 +377,11 @@ class Lab3ColourWidget(LabWidget):
             return {"output": self.last_frame, "error": str(exc), "success": False}
 
     def _on_color_preset_changed(self, color_name):
-        if color_name in COLOR_PRESETS:
-            preset = COLOR_PRESETS[color_name]
-            self.h_min_slider.blockSignals(True)
-            self.h_max_slider.blockSignals(True)
-            self.saturation_slider.blockSignals(True)
-            self.value_slider.blockSignals(True)
-            self.h_min_slider.setValue(preset["h_min"])
-            self.h_max_slider.setValue(preset["h_max"])
-            self.saturation_slider.setValue(preset["s_min"])
-            self.value_slider.setValue(preset["v_min"])
-            self.h_min_slider.blockSignals(False)
-            self.h_max_slider.blockSignals(False)
-            self.saturation_slider.blockSignals(False)
-            self.value_slider.blockSignals(False)
-        self.apply_button.setText(f"Segment {color_name} regions")
-        self._update_parameter_labels()
         if self.last_frame is not None:
             self.run_colour_mask()
 
-    def _on_slider_changed(self, *_args):
-        sender = self.sender()
-        if sender in (self.h_min_slider, self.h_max_slider):
-            if self.color_preset_combo.currentText() != "Custom":
-                self.color_preset_combo.blockSignals(True)
-                self.color_preset_combo.setCurrentText("Custom")
-                self.color_preset_combo.blockSignals(False)
-                self.apply_button.setText("Segment Custom regions")
-        self._update_parameter_labels()
-
-    def _segmentation_parameters(self):
-        h_min = self.h_min_slider.value()
-        h_max = self.h_max_slider.value()
-        saturation_min = self.saturation_slider.value()
-        value_min = self.value_slider.value()
-        kernel_size = self.morphology_slider.value() * 2 + 1
-        minimum_area = self.min_area_slider.value() * 100
-        return (h_min, h_max, saturation_min, 255,
-                value_min, 255, kernel_size, minimum_area)
-
-    def _process_segmentation(self, frame, parameters):
-        h_min, h_max, s_min, s_max, v_min, v_max, kernel_size, minimum_area = parameters
-        results = self.solution_module.process_color_segmentation(
-            frame.copy(), h_min, h_max, s_min, s_max, v_min, v_max,
-            morph_kernel=kernel_size, min_area=minimum_area,
-        )
+    def _process_segmentation(self, frame, color_name):
+        results = self.solution_module.process_color_preset(frame.copy(), color_name)
         if not results or results.get("mask_cleaned") is None:
             raise RuntimeError("The segmentation pipeline returned no mask.")
         return results
@@ -519,7 +390,7 @@ class Lab3ColourWidget(LabWidget):
         if frame is None or self.solution_module is None:
             return
         request = (frame.copy(), int(frame_number or 0), self._video_generation, self._segmentation_revision,
-                   self._segmentation_parameters())
+                   self.color_preset_combo.currentText())
         if self._segmentation_busy:
             self._segmentation_pending = request
             return
@@ -552,29 +423,15 @@ class Lab3ColourWidget(LabWidget):
 
     def _apply_segmentation_result(self, frame, frame_number, results):
         color_name = self.color_preset_combo.currentText()
-        h_min, h_max, saturation_min, _, value_min, _, kernel_size, minimum_area = self._segmentation_parameters()
-        wrap_text = " (wraparound)" if h_min > h_max else ""
-        results["parameters"] = {
-            "target_color": color_name,
-            "h_min": h_min,
-            "h_max": h_max,
-            "saturation_min": saturation_min,
-            "value_min": value_min,
-            "morph_kernel": kernel_size,
-            "min_area": minimum_area,
-        }
         self.last_results = results
         self.last_result_frame_number = frame_number
         candidate_data = results.get("candidate_regions", [])
-        areas = sorted((item["area"] for item in candidate_data), reverse=True)
-        matched = int(np.count_nonzero(results["mask_cleaned"]))
-        coverage = matched / max(1, results["mask_cleaned"].size) * 100
-        area_summary = ", ".join(f"{area:,.0f}" for area in areas[:6]) or "none"
         frame_info = f" · frame {frame_number:,}" if frame_number is not None else ""
         if frame_number is not None and self.video_fps > 0:
             frame_info += f" · {frame_number / self.video_fps:.2f}s"
         self.contour_info.setText(
-            f"{len(candidate_data)} {color_name.lower()} candidate(s){frame_info} · {matched:,} cleaned pixels ({coverage:.2f}%) · areas: {area_summary} px² · HSV Hue [{h_min}–{h_max}]{wrap_text}, S≥{saturation_min}, V≥{value_min} · kernel {kernel_size}×{kernel_size} · min area {minimum_area}px². Candidates are color regions, not confirmed objects."
+            f"{len(candidate_data)} {color_name.lower()} candidate region(s){frame_info}. "
+            "Colour regions are not confirmed object identities."
         )
         self._show_result_mode(self.result_mode.currentText())
         self.result_mode.setEnabled(True)
@@ -587,21 +444,6 @@ class Lab3ColourWidget(LabWidget):
         image = self.last_results.get("mask_cleaned") if "mask" in mode.lower() else self.last_results.get("result")
         if image is not None:
             self.result_display.set_image(self.cv_to_pixmap(image))
-
-    def _update_parameter_labels(self, *_args):
-        h_min = self.h_min_slider.value()
-        h_max = self.h_max_slider.value()
-        wrap_text = " (wraparound)" if h_min > h_max else ""
-        labels = (
-            f"Hue min: {h_min}{wrap_text}",
-            f"Hue max: {h_max}",
-            f"Min saturation: {self.saturation_slider.value()}",
-            f"Min brightness (value): {self.value_slider.value()}",
-            f"Morphology kernel: {self.morphology_slider.value() * 2 + 1} px",
-            f"Min contour area: {self.min_area_slider.value() * 100} px²",
-        )
-        for label, text in zip(self.parameter_labels, labels):
-            label.setText(text)
 
     def log_to_evidence(self):
         if self.last_results is None:

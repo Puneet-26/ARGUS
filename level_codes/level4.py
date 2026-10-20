@@ -22,10 +22,13 @@ except ImportError:
     from level3 import COLOR_PRESETS
 
 OUTPUT_DIR = ROOT / "outputs" / "level4"
+TRACKING_MIN_AREA = 500
+TRACKING_MAX_STEP_FRACTION = 0.18
 
 
 def process_tracking_frame(frame, previous_centroid=None, trail=None, segments=None,
-                           line_x=None, min_area=500, max_step_fraction=0.18,
+                           line_x=None, min_area=TRACKING_MIN_AREA,
+                           max_step_fraction=TRACKING_MAX_STEP_FRACTION,
                            track_lost=False, crossing_direction="left_to_right",
                            h_min=170, h_max=10, s_min=70, s_max=255, v_min=40, v_max=255,
                            target_name="Red"):
@@ -94,6 +97,11 @@ def process_tracking_frame(frame, previous_centroid=None, trail=None, segments=N
         if previous_centroid is not None and line_x is not None:
             if crossing_direction == "right_to_left":
                 crossed = previous_centroid[0] > line_x >= centroid[0]
+            elif crossing_direction == "either":
+                crossed = (
+                    previous_centroid[0] < line_x <= centroid[0]
+                    or previous_centroid[0] > line_x >= centroid[0]
+                )
             else:
                 crossed = previous_centroid[0] < line_x <= centroid[0]
         previous_centroid = centroid

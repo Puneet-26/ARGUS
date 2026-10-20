@@ -4,14 +4,12 @@ import os
 from pathlib import Path
 from PySide6.QtCore import Qt, QRunnable, QThreadPool, QObject, Signal, Slot
 from PySide6.QtWidgets import (
-    QCheckBox,
     QComboBox,
     QFrame,
     QGridLayout,
     QHBoxLayout,
     QLabel,
     QPushButton,
-    QSlider,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -20,9 +18,13 @@ from PySide6.QtWidgets import (
 
 from evidence.registry import EvidenceEntry, registry
 from evidence.artifacts import save_image
-from ui.style import COLORS, FONTS, RADIUS
+from ui.style import COLORS, FONTS
 from ui.widgets.lab_base import ImageDisplayLabel, LabWidget, MediaTimelineControls
-from level_codes.level4 import process_tracking_frame
+from level_codes.level4 import (
+    TRACKING_MAX_STEP_FRACTION,
+    TRACKING_MIN_AREA,
+    process_tracking_frame,
+)
 from level_codes.level3 import COLOR_PRESETS
 
 
@@ -64,8 +66,8 @@ class Lab4MotionWidget(LabWidget):
     restart_requested = Signal()
 
     def __init__(self, parent=None):
-        self.min_area = 500
-        self.max_step_fraction = 0.18
+        self.min_area = TRACKING_MIN_AREA
+        self.max_step_fraction = TRACKING_MAX_STEP_FRACTION
         configured_line = os.environ.get("ARGUS_LEVEL4_EXIT_LINE_X_FRACTION", "").strip()
         try:
             self.exit_line_fraction = float(configured_line) if configured_line else None
@@ -88,7 +90,7 @@ class Lab4MotionWidget(LabWidget):
         self.red_segments = []
         self.track_note = ""
         self.track_lost = False
-        self.crossing_direction = "left_to_right"
+        self.crossing_direction = "either"
         self.target_color = "Red"
         preset = COLOR_PRESETS["Red"]
         self.target_h_min = preset["h_min"]
@@ -119,49 +121,14 @@ class Lab4MotionWidget(LabWidget):
         self.media_controls.restart_requested.connect(self.restart_requested.emit)
         root.addWidget(self.media_controls)
 
-        tracking_controls = QGridLayout()
+        tracking_controls = QHBoxLayout()
         self.target_color_combo = QComboBox()
-        self.target_color_combo.addItems(["Red", "Blue", "Green", "Yellow", "Orange"])
+        self.target_color_combo.addItems(["Red", "Green", "Blue"])
         self.target_color_combo.currentTextChanged.connect(self._target_color_changed)
-        self.area_slider = QSlider(Qt.Horizontal)
-        self.area_slider.setRange(0, 50)
-        self.area_slider.setValue(5)
-        self.area_slider.setToolTip("Ignore target contours smaller than this area.")
-        self.jump_slider = QSlider(Qt.Horizontal)
-        self.jump_slider.setRange(5, 40)
-        self.jump_slider.setValue(18)
-        self.jump_slider.setToolTip("Maximum allowed centroid movement between consecutive frames, as a fraction of frame diagonal.")
-        self.area_label = QLabel()
-        self.jump_label = QLabel()
-        self.entrance_line_checkbox = QCheckBox("Evaluate doorway line crossings")
-        self.entrance_line_checkbox.setChecked(self.exit_line_fraction is not None)
-        self.line_slider = QSlider(Qt.Horizontal)
-        self.line_slider.setRange(0, 1000)
-        self.line_slider.setValue(round(self.exit_line_fraction * 1000) if self.exit_line_fraction is not None else 600)
-        self.line_slider.setEnabled(self.exit_line_fraction is not None)
-        self.line_slider.setToolTip("Horizontal line position as a fraction of frame width. Set this from the actual Lab 4B doorway.")
-        self.line_label = QLabel()
-        self.direction_combo = QComboBox()
-        self.direction_combo.addItem("Left → right crossing", "left_to_right")
-        self.direction_combo.addItem("Right → left crossing", "right_to_left")
-        self.direction_combo.currentIndexChanged.connect(self._tracking_parameters_changed)
-        tracking_controls.addWidget(QLabel("Target colour:"), 0, 0)
-        tracking_controls.addWidget(self.target_color_combo, 0, 1)
-        tracking_controls.addWidget(self.area_label, 1, 0)
-        tracking_controls.addWidget(self.area_slider, 1, 1)
-        tracking_controls.addWidget(self.jump_label, 2, 0)
-        tracking_controls.addWidget(self.jump_slider, 2, 1)
-        tracking_controls.addWidget(self.entrance_line_checkbox, 3, 0)
-        tracking_controls.addWidget(self.line_slider, 3, 1)
-        tracking_controls.addWidget(self.line_label, 4, 0, 1, 2)
-        tracking_controls.addWidget(QLabel("Crossing direction:"), 5, 0)
-        tracking_controls.addWidget(self.direction_combo, 5, 1)
+        tracking_controls.addWidget(QLabel("Target colour:"))
+        tracking_controls.addWidget(self.target_color_combo)
+        tracking_controls.addStretch(1)
         root.addLayout(tracking_controls)
-        self.area_slider.valueChanged.connect(self._tracking_parameters_changed)
-        self.jump_slider.valueChanged.connect(self._tracking_parameters_changed)
-        self.line_slider.valueChanged.connect(self._tracking_parameters_changed)
-        self.entrance_line_checkbox.toggled.connect(self._tracking_parameters_changed)
-        self._tracking_parameters_changed()
 
         views = QGridLayout()
         views.setContentsMargins(0, 0, 0, 0)
@@ -182,7 +149,7 @@ class Lab4MotionWidget(LabWidget):
         root.addWidget(workspace, 1)
 
         actions = QHBoxLayout()
-        self.analysis_status = QLabel("Adjust the tracking sliders below. Enable the doorway line only after locating Lab 4B in the supplied video.")
+        self.analysis_status = QLabel("Upload a video to track colour candidates. No doorway crossing is reported unless a reliable line is configured.")
         self.analysis_status.setWordWrap(True)
         self.analysis_status.setObjectName("pageSummary")
         actions.addWidget(self.analysis_status, 1)
@@ -248,33 +215,17 @@ class Lab4MotionWidget(LabWidget):
         self.target_s_max = 255
         self.target_v_min = preset["v_min"]
         self.target_v_max = 255
-        self._tracking_parameters_changed()
+        self._restart_tracking()
 
-    def _tracking_parameters_changed(self, *_args):
+    def _restart_tracking(self):
         self._tracking_revision += 1
-        self.min_area = self.area_slider.value() * 100
-        self.max_step_fraction = self.jump_slider.value() / 100.0
-        use_line = self.entrance_line_checkbox.isChecked()
-        self.exit_line_fraction = self.line_slider.value() / 1000.0 if use_line else None
-        self.crossing_direction = (
-            self.direction_combo.currentData()
-            if hasattr(self, "direction_combo")
-            else "left_to_right"
-        )
-        color = getattr(self, "target_color", "Red")
-        self.area_label.setText(f"Minimum {color.lower()} contour area: {self.min_area} px²")
-        self.jump_label.setText(f"Maximum centroid jump: {self.max_step_fraction:.0%} of frame diagonal")
-        self.line_label.setText(
-            f"Doorway line at {self.exit_line_fraction:.1%} of frame width" if use_line
-            else "Doorway line off · inspect video before enabling crossings"
-        )
-        self.line_slider.setEnabled(use_line)
         if self.last_frame is not None and self.source_kind == "video":
-            if self.red_trail:
-                self.red_segments.append(self.red_trail)
-                self.red_trail = []
+            self.red_trail = []
+            self.red_segments = []
             self.previous_red_centroid = None
             self.track_lost = False
+            self.previous_cross_count = 0
+            self.crossing_recorded = False
             self.last_processed_frame_number = self.frame_number - 1
             if self._tracking_source_generation is not None:
                 self.submit_video_frame(
@@ -456,23 +407,18 @@ class Lab4MotionWidget(LabWidget):
             self.notebook_button.setEnabled(True)
             cross_count = int(results.get("cross_count", 0))
             color = getattr(self, "target_color", "Red")
-            if line_x is None:
-                status = (
-                    f"{pipeline['candidate_count']} {color.lower()} candidate(s) · entrance line not configured; "
-                    "crossings are not evaluated."
-                )
+            if centroid is not None:
+                status = f"Target detected · {pipeline['candidate_count']} {color.lower()} candidate(s)."
+            elif pipeline["track_lost"]:
+                status = f"Target temporarily lost · {pipeline['candidate_count']} {color.lower()} candidate(s)."
             else:
-                direction = self.crossing_direction.replace("_", " ")
-                status = (
-                    f"{pipeline['candidate_count']} {color.lower()} candidate(s) · "
-                    f"{cross_count} supported {direction} crossing(s)."
-                )
-            if centroid is None:
-                status += " No centroid is tracked in this frame."
+                status = f"Target not detected · {pipeline['candidate_count']} {color.lower()} candidate(s)."
             if self.track_note:
                 status += " " + self.track_note
             if line_x is None:
-                status += " Inspect the video and configure the doorway line position."
+                status += " Trajectory only; doorway crossing is not evaluated without a reliable line."
+            else:
+                status += f" {cross_count} candidate crossing(s) of the configured line."
             self.analysis_status.setText(status + f" {color} colour does not identify its carrier.")
             if newly_crossed:
                 self.crossing_recorded = True
@@ -512,7 +458,7 @@ class Lab4MotionWidget(LabWidget):
             module="Level 4: Track the Red Bag",
             kind="video_tracking",
             value={"candidate_count": self.last_results.get("candidates", 0), "centroid": centroid, "segments": self.last_results.get("red_segments", []), "line_crossings": cross_count, "entrance_line_x_fraction": self.exit_line_fraction, "crossing_direction": self.crossing_direction, "minimum_contour_area": self.min_area, "max_centroid_jump_fraction": self.max_step_fraction, "target_color": color},
-            technique=f"OpenCV {color} HSV segmentation, morphology, area-filtered contours, nearest-centroid continuity" + (f" (configured line at {self.exit_line_fraction:.0%} frame width, direction {self.crossing_direction.replace('_', ' ')})" if self.exit_line_fraction is not None else " (entrance line not configured; crossings not evaluated)"),
+            technique=f"OpenCV {color} HSV segmentation, morphology, area-filtered contours, nearest-centroid continuity" + (f" (configured line at {self.exit_line_fraction:.0%} frame width, either crossing direction)" if self.exit_line_fraction is not None else " (trajectory shown; doorway crossings not evaluated without a reliable line)"),
             observation=self.analysis_status.text(),
             interpretation=f"The selected contour is a {color.lower()} candidate followed by centroid proximity between adjacent readable frames. A supported line crossing describes clip-relative movement only; it does not identify the object or its carrier.",
             uncertainty="High" if self.last_results.get("candidates", 0) != 1 or centroid is None else "Medium",
@@ -540,7 +486,7 @@ class Lab4MotionWidget(LabWidget):
         self.media_controls.reset()
         self.original_display.set_image(None)
         self.result_display.set_image(None)
-        self.analysis_status.setText("Configure the entrance line from the actual video before evaluating crossings. Red colour does not identify a person.")
+        self.analysis_status.setText("Upload a video to track colour candidates. Doorway crossings need a reliable configured line; colour does not identify a person.")
         self.events_table.setRowCount(0)
         self.notebook_button.setEnabled(False)
         self.reset()

@@ -1,12 +1,6 @@
 .venv/
 __pycache__/
 *.py[cod]
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-.claude/
-.vscode/
-.idea/
 .env
 .env.*
 !.env.example
@@ -16,14 +10,6 @@ Thumbs.db
 *.tmp
 build/
 dist/
-models/
 *.pt
-datasets/
-runs/
 outputs/**
 !outputs/**/.gitkeep
-assets/evidence/*
-!assets/evidence/manifest.json
-!assets/evidence/MANIFEST.md
-assets/records/*
-!assets/records/.gitkeep
