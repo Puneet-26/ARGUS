@@ -24,7 +24,6 @@ from PySide6.QtWidgets import (
 )
 
 from evidence.registry import EvidenceEntry, registry
-from evidence.artifacts import documentary_records, missing_manifest_assets
 from evidence.labels import display_module_label
 from ui.style import COLORS, FONTS, RADIUS
 
@@ -108,42 +107,12 @@ class EvidenceNotebookWidget(QWidget):
         self.source_label = QLabel("Source: no evidence selected")
         self.source_label.setObjectName("mutedLabel")
         form.addWidget(self.source_label, 4, 0, 1, 3)
-        self.documentary_source = QComboBox()
-        self.documentary_source.addItem("No documentary source selected", None)
-        for record in documentary_records():
-            self.documentary_source.addItem(record["filename"], record)
-        form.addWidget(self.documentary_source, 5, 0, 1, 3)
         save = QPushButton("Save note")
         save.setObjectName("primaryButton")
         save.clicked.connect(self.add_entry_from_form)
-        form.addWidget(save, 5, 3, alignment=Qt.AlignRight)
+        form.addWidget(save, 4, 3, alignment=Qt.AlignRight)
         self.note_form.setVisible(False)
         root.addWidget(self.note_form)
-
-        self.records_group = QGroupBox("Supplied documentary records")
-        self.records_group.setCheckable(True)
-        self.records_group.setChecked(False)
-        records_layout = QVBoxLayout(self.records_group)
-        self.record_selector = QComboBox()
-        self.record_view = QTextEdit()
-        self.record_view.setReadOnly(True)
-        self.record_view.setMaximumHeight(130)
-        self.available_records = documentary_records()
-        for record in self.available_records:
-            self.record_selector.addItem(f"{record['id']} · {record['filename']}", record)
-        if not self.available_records:
-            missing_records = [item for item in missing_manifest_assets() if item['filename'].lower().endswith('.txt')]
-            self.record_selector.addItem("No supplied text records")
-            self.record_view.setPlainText(
-                "No documentary records are available.\n" + "\n".join(f"Missing: {item['filename']}" for item in missing_records)
-            )
-            self.record_selector.setEnabled(False)
-        else:
-            self.record_selector.currentIndexChanged.connect(self._show_documentary_record)
-            self._show_documentary_record(0)
-        records_layout.addWidget(self.record_selector)
-        records_layout.addWidget(self.record_view)
-        root.addWidget(self.records_group)
 
         self.empty_state = QLabel("No evidence recorded yet. Use a level's Record result button or add an investigator note.")
         self.empty_state.setWordWrap(True)
@@ -166,11 +135,6 @@ class EvidenceNotebookWidget(QWidget):
     def _toggle_note_form(self, expanded):
         self.note_form.setVisible(expanded)
         self.add_note_toggle.setText("Add investigator note  ▾" if expanded else "Add investigator note  ▸")
-
-    def _show_documentary_record(self, index):
-        if 0 <= index < len(self.available_records):
-            record = self.available_records[index]
-            self.record_view.setPlainText(f"{record['path']}\n\n{record['content']}")
 
     def set_source_metadata(self, filename="", source_timestamp=""):
         self.source_filename = str(filename or "")
@@ -217,9 +181,8 @@ class EvidenceNotebookWidget(QWidget):
             self.log_message.emit("Enter a method, direct observation, and limitation before saving.", "warning")
             return
         module = self.module_combo.currentText()
-        selected_record = self.documentary_source.currentData()
-        source_filename = selected_record["filename"] if selected_record else self.source_filename
-        source_path = selected_record["path"] if selected_record else ""
+        source_filename = self.source_filename
+        source_path = ""
         registry.add(EvidenceEntry(
             module=module,
             kind="manual_note",

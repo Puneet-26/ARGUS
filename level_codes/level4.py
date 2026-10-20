@@ -10,26 +10,41 @@ import math
 import cv2
 import numpy as np
 
+import sys
+
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_VIDEO = ROOT / "assets" / "evidence" / "level4_corridor_exit.mp4"
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+try:
+    from level_codes.level3 import COLOR_PRESETS
+except ImportError:
+    from level3 import COLOR_PRESETS
+
 OUTPUT_DIR = ROOT / "outputs" / "level4"
 
 
 def process_tracking_frame(frame, previous_centroid=None, trail=None, segments=None,
-                           line_x=None, min_area=500, max_step_fraction=0.18):
-    """Segment, select, and annotate red candidates in one video frame."""
+                           line_x=None, min_area=500, max_step_fraction=0.18,
+                           track_lost=False, crossing_direction="left_to_right",
+                           h_min=170, h_max=10, s_min=70, s_max=255, v_min=40, v_max=255,
+                           target_name="Red"):
+    """Segment, select, and annotate colored tracking candidates in one video frame."""
     trail = list(trail or [])
     segments = [list(segment) for segment in (segments or [])]
     height, width = frame.shape[:2]
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-    # Red wraps around the ends of OpenCV's 0-179 hue axis.
-    low_red = cv2.inRange(hsv, np.array([0, 70, 40], np.uint8), np.array([10, 255, 255], np.uint8))
-    high_red = cv2.inRange(hsv, np.array([170, 70, 40], np.uint8), np.array([179, 255, 255], np.uint8))
-    red_mask = cv2.bitwise_or(low_red, high_red)
+    if h_min <= h_max:
+        target_mask = cv2.inRange(hsv, np.array([h_min, s_min, v_min], np.uint8), np.array([h_max, s_max, v_max], np.uint8))
+    else:
+        low = cv2.inRange(hsv, np.array([0, s_min, v_min], np.uint8), np.array([h_max, s_max, v_max], np.uint8))
+        high = cv2.inRange(hsv, np.array([h_min, s_min, v_min], np.uint8), np.array([179, s_max, v_max], np.uint8))
+        target_mask = cv2.bitwise_or(low, high)
+
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
-    red_mask = cv2.morphologyEx(red_mask, cv2.MORPH_OPEN, kernel)
-    red_mask = cv2.morphologyEx(red_mask, cv2.MORPH_CLOSE, kernel)
-    contours, _ = cv2.findContours(red_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    target_mask = cv2.morphologyEx(target_mask, cv2.MORPH_OPEN, kernel)
+    target_mask = cv2.morphologyEx(target_mask, cv2.MORPH_CLOSE, kernel)
+    contours, _ = cv2.findContours(target_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     candidates = []
     for contour in contours:
         area = cv2.contourArea(contour)
@@ -49,9 +64,11 @@ def process_tracking_frame(frame, previous_centroid=None, trail=None, segments=N
         cv2.rectangle(annotated, (x, y), (x + box_width, y + box_height), (130, 130, 130), 1)
 
     selected = None
-    if candidates and previous_centroid is None:
+    if track_lost:
+        note = "Track lost after a gap; reset or seek to begin a new segment. No replacement candidate selected."
+    elif candidates and previous_centroid is None:
         selected = max(candidates, key=lambda item: item[2])
-        note = "Largest red candidate seeded; physical identity is unverified."
+        note = f"Largest {target_name.lower()} candidate seeded; physical identity is unverified."
     elif candidates:
         max_step = max(40.0, math.hypot(width, height) * max_step_fraction)
         nearby = [item for item in candidates if math.dist(previous_centroid, item[1]) <= max_step]
@@ -61,11 +78,13 @@ def process_tracking_frame(frame, previous_centroid=None, trail=None, segments=N
         else:
             note = "No candidate within the continuity limit; track gap."
     else:
-        note = "No red candidate; track gap."
+        note = f"No {target_name.lower()} candidate; track gap."
 
     crossed = False
     centroid = None
     if selected is None:
+        if previous_centroid is not None:
+            track_lost = True
         previous_centroid = None
         if trail:
             segments.append(trail)
@@ -73,7 +92,10 @@ def process_tracking_frame(frame, previous_centroid=None, trail=None, segments=N
     else:
         contour, centroid, _ = selected
         if previous_centroid is not None and line_x is not None:
-            crossed = (previous_centroid[0] < line_x <= centroid[0]) or (previous_centroid[0] > line_x >= centroid[0])
+            if crossing_direction == "right_to_left":
+                crossed = previous_centroid[0] > line_x >= centroid[0]
+            else:
+                crossed = previous_centroid[0] < line_x <= centroid[0]
         previous_centroid = centroid
         trail.append(centroid)
         x, y, box_width, box_height = cv2.boundingRect(contour)
@@ -84,20 +106,24 @@ def process_tracking_frame(frame, previous_centroid=None, trail=None, segments=N
         for start, end in zip(segment[-120:], segment[-119:]):
             cv2.line(annotated, start, end, (0, 255, 0), 2)
     cv2.putText(annotated, note, (12, 24), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 2, cv2.LINE_AA)
-    return {"result": annotated, "mask": red_mask, "candidate_count": len(candidates),
+    return {"result": annotated, "mask": target_mask, "candidate_count": len(candidates),
             "centroid": centroid, "previous_centroid": previous_centroid, "crossed": crossed,
-            "trail": trail, "segments": segments, "note": note, "candidates": candidates}
+            "trail": trail, "segments": segments, "note": note, "candidates": candidates,
+            "track_lost": track_lost}
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--video", type=Path, default=DEFAULT_VIDEO, help="Actual corridor video")
+    parser.add_argument("--video", type=Path, required=True, help="Path to evidence video")
+    parser.add_argument("--color", choices=list(COLOR_PRESETS.keys()), default="Red", help="Target color to track")
     parser.add_argument("--line-x-fraction", type=float, default=None, help="Doorway x-position as fraction of frame width; inspect video first")
     parser.add_argument("--min-area", type=float, default=100.0)
     parser.add_argument("--max-step-fraction", type=float, default=0.18)
+    parser.add_argument("--crossing-direction", choices=("left_to_right", "right_to_left"), default="left_to_right")
     args = parser.parse_args()
     if args.line_x_fraction is not None and not 0 <= args.line_x_fraction <= 1:
         raise SystemExit("--line-x-fraction must be between 0 and 1")
+    preset = COLOR_PRESETS.get(args.color, COLOR_PRESETS["Red"])
     video_path = args.video.expanduser()
     if not video_path.is_absolute() and not video_path.is_file():
         video_path = ROOT / video_path
@@ -122,14 +148,21 @@ def main():
                 if not writer.isOpened():
                     raise SystemExit(f"Could not create output video: {path}")
             line_x = round(width * args.line_x_fraction) if args.line_x_fraction is not None else None
-            result = process_tracking_frame(frame, previous_centroid, trail, segments, line_x, args.min_area, args.max_step_fraction)
+            result = process_tracking_frame(
+                frame, previous_centroid, trail, segments, line_x, args.min_area, args.max_step_fraction,
+                crossing_direction=args.crossing_direction,
+                h_min=preset["h_min"], h_max=preset["h_max"],
+                s_min=preset["s_min"], s_max=preset["s_max"],
+                v_min=preset["v_min"], v_max=preset["v_max"],
+                target_name=args.color,
+            )
             previous_centroid, trail, segments = result["previous_centroid"], result["trail"], result["segments"]
             tracked_frames += int(result["centroid"] is not None)
             if result["crossed"]:
                 crossings.append({"frame": frame_number, "seconds": frame_number / fps, "centroid": result["centroid"], "line_x": line_x})
             writer.write(result["result"])
             cv2.imshow("Source corridor video", frame)
-            cv2.imshow("Red-candidate tracking", result["result"])
+            cv2.imshow("Candidate tracking", result["result"])
             frame_number += 1
             if cv2.waitKey(1) & 0xFF == ord("q"):
                 break

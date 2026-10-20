@@ -10,9 +10,7 @@ import cv2
 import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
-EVIDENCE_DIR = ROOT / "assets" / "evidence"
 OUTPUT_DIR = ROOT / "outputs" / "level1"
-DEFAULT_IMAGE = EVIDENCE_DIR / "EVIDENCE-01.png"
 EFFECTS = ("Grayscale", "CLAHE", "Threshold")
 CLOCK_ZOOM = 5
 LEVEL1_CLOCK_EVIDENCE = "EVIDENCE-01"
@@ -211,18 +209,47 @@ def configured_clock_roi(image: np.ndarray, evidence_name: str):
     return detect_clock_region(image)
 
 
-def process_clock_region(image: np.ndarray, effect: str, region=None, clahe_clip_limit=2.0, threshold_value=128):
-    """Return an enlarged processed view of the selected clock crop."""
-    x, y, width, height = region or detect_clock_region(image)
-    crop = image[y:y + height, x:x + width]
+def get_default_roi(image: np.ndarray, evidence_name: str = "") -> tuple[int, int, int, int] | None:
+    """Resolve a default ROI: the workshop clock ROI if matched, auto-detected text, or center region."""
+    clock_roi = configured_clock_roi(image, evidence_name)
+    if clock_roi is not None:
+        return clock_roi
+    try:
+        return detect_clock_region(image)
+    except Exception:
+        height, width = image.shape[:2]
+        crop_w = max(10, int(width * 0.25))
+        crop_h = max(10, int(height * 0.20))
+        crop_x = max(0, (width - crop_w) // 2)
+        crop_y = max(0, (height - crop_h) // 2)
+        return (crop_x, crop_y, crop_w, crop_h)
+
+
+def process_roi(image: np.ndarray, effect: str, region=None, zoom=CLOCK_ZOOM, clahe_clip_limit=2.0, threshold_value=128):
+    """Return an enlarged processed view of the selected Region of Interest (ROI)."""
+    if region is None:
+        region = get_default_roi(image)
+    if region is None:
+        raise ValueError("No Region of Interest (ROI) could be established.")
+
+    height, width = image.shape[:2]
+    x, y, roi_w, roi_h = region
+    x = max(0, min(int(x), width - 1))
+    y = max(0, min(int(y), height - 1))
+    roi_w = max(1, min(int(roi_w), width - x))
+    roi_h = max(1, min(int(roi_h), height - y))
+
+    crop = image[y:y + roi_h, x:x + roi_w]
     if crop.size == 0:
-        raise ValueError("The detected clock region is empty.")
+        raise ValueError("The selected ROI is empty.")
+
     if crop.ndim == 2:
         gray = crop
     elif crop.shape[2] == 4:
         gray = cv2.cvtColor(crop, cv2.COLOR_BGRA2GRAY)
     else:
         gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+
     if effect == "Grayscale":
         result = gray
     elif effect == "CLAHE":
@@ -231,12 +258,19 @@ def process_clock_region(image: np.ndarray, effect: str, region=None, clahe_clip
         _, result = cv2.threshold(gray, threshold_value, 255, cv2.THRESH_BINARY)
     else:
         raise ValueError(f"Unknown image effect: {effect}")
+
     if result.size == 0:
         raise RuntimeError("Image processing returned an empty result.")
+
+    zoom_factor = max(1, int(zoom))
     zoomed_result = cv2.resize(
-        result, None, fx=CLOCK_ZOOM, fy=CLOCK_ZOOM, interpolation=cv2.INTER_CUBIC
+        result, None, fx=zoom_factor, fy=zoom_factor, interpolation=cv2.INTER_CUBIC
     )
-    return zoomed_result, (x, y, width, height)
+    return zoomed_result, (x, y, roi_w, roi_h)
+
+
+# Backward-compatible alias for existing imports
+process_clock_region = process_roi
 
 
 def apply_effect(image: np.ndarray, effect: str, clahe_clip_limit=2.0, threshold_value=128) -> np.ndarray:
@@ -266,39 +300,47 @@ def apply_effect(image: np.ndarray, effect: str, clahe_clip_limit=2.0, threshold
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--image", type=Path, help="Evidence image; defaults to assets/evidence/EVIDENCE-01.*")
+    parser.add_argument("--image", required=True, type=Path, help="Path to evidence image")
     parser.add_argument("--effect", choices=EFFECTS, default="CLAHE")
-    parser.add_argument("--clip-limit", type=float, default=2.0)
-    parser.add_argument("--threshold", type=int, default=128)
+    parser.add_argument("--clip-limit", type=float, default=2.0, help="CLAHE contrast clip limit")
+    parser.add_argument("--threshold", type=int, default=128, help="Binary threshold value (0-255)")
+    parser.add_argument("--roi", type=int, nargs=4, metavar=("X", "Y", "WIDTH", "HEIGHT"),
+                        help="Optional custom Region of Interest coordinates: X Y WIDTH HEIGHT")
+    parser.add_argument("--zoom", type=int, default=CLOCK_ZOOM, help=f"Zoom magnification for the cropped ROI (default {CLOCK_ZOOM}x)")
     args = parser.parse_args()
-    image_path = args.image
-    if image_path is not None:
-        image_path = image_path.expanduser()
-        if not image_path.is_absolute() and not image_path.is_file():
-            image_path = ROOT / image_path
-    if image_path is None:
-        matches = sorted(EVIDENCE_DIR.glob("EVIDENCE-01.*"))
-        image_path = matches[0] if matches else DEFAULT_IMAGE
+    image_path = args.image.expanduser()
+    if not image_path.is_absolute() and not image_path.is_file():
+        image_path = ROOT / image_path
     image = cv2.imread(str(image_path), cv2.IMREAD_COLOR)
     if image is None:
-        raise SystemExit(f"Could not read image: {image_path}. Add EVIDENCE-01 to assets/evidence or pass --image.")
+        raise SystemExit(f"Could not read image: {image_path}. Provide a valid image file with --image PATH.")
     height, width = image.shape[:2]
     print(f"Image dimensions: {width} x {height}; OpenCV reads color channels as BGR.")
     enhanced = apply_effect(image, args.effect, args.clip_limit, args.threshold)
-    region = configured_clock_roi(image, image_path.name)
+
+    region = tuple(args.roi) if args.roi else configured_clock_roi(image, image_path.name)
+    if region is None and args.roi is None:
+        try:
+            region = detect_clock_region(image)
+        except Exception:
+            region = None
+
     detail = None
     if region is not None:
-        detail, region = process_clock_region(image, args.effect, region, args.clip_limit, args.threshold)
+        detail, region = process_roi(image, args.effect, region, zoom=args.zoom,
+                                     clahe_clip_limit=args.clip_limit, threshold_value=args.threshold)
+
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     cv2.imwrite(str(OUTPUT_DIR / f"{args.effect.lower()}_full.png"), enhanced)
     if detail is not None:
-        cv2.imwrite(str(OUTPUT_DIR / "clock_detail_enhanced.png"), detail)
+        cv2.imwrite(str(OUTPUT_DIR / "roi_detail_enhanced.png"), detail)
+
     cv2.imshow("Original evidence", image)
     cv2.imshow(f"{args.effect} enhanced evidence", enhanced)
     if detail is not None:
-        cv2.imshow("Enhanced clock detail", detail)
+        cv2.imshow(f"Enhanced ROI detail ({region[2]}x{region[3]} at x={region[0]}, y={region[1]})", detail)
     else:
-        print("No validated clock ROI for this image; showing the full-frame enhancement only.")
+        print("No ROI specified or auto-detected; showing the full-frame enhancement only. Use --roi X Y W H to crop.")
     print(f"Saved outputs in {OUTPUT_DIR}. Press any key to close.")
     print("Enhancement may improve visibility but cannot recover detail absent from the source.")
     cv2.waitKey(0)

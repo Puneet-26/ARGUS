@@ -56,8 +56,6 @@ def infer_frame(model, frame, confidence=0.25, image_size=640):
                 "box": coordinates,
             })
             color = colors[class_id % len(colors)]
-            box_drawings.append((coordinates, color))
-
             text = f"{label} {confidence_score:.2f}"
             (text_width, text_height), baseline = cv2.getTextSize(
                 text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, text_thickness
@@ -83,7 +81,7 @@ def infer_frame(model, frame, confidence=0.25, image_size=640):
                 )
             ), min(max(0, coordinates[1]), max(0, height - label_height)))
             label_regions.append((left, top, label_width, label_height))
-            box_drawings[-1] = (coordinates, color, (left, top, label_width, label_height), text)
+            box_drawings.append((coordinates, color, (left, top, label_width, label_height), text))
 
     # Draw boxes first and opaque labels second so labels stay readable.
     for coordinates, color, _label_region, _text in box_drawings:

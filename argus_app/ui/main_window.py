@@ -130,6 +130,7 @@ class ProcessingWorker(QThread):
             with self._source_lock:
                 if not self.input_source.is_opened() or self.input_source.source_type.value != "video":
                     return
+                self._source_generation += 1
                 ok, frame = self.input_source.seek_frame(frame_number)
                 current = self.input_source.frame_position
                 total = self.input_source.frame_count
@@ -204,6 +205,7 @@ class MainWindow(QMainWindow):
                 lab.level_completed.connect(self.on_level_completed)
         self.lab_widgets["The Final Clue"].play_pause_requested.connect(self.toggle_playback)
         self.lab_widgets["The Final Clue"].seek_requested.connect(self.worker.seek_frame)
+        self.lab_widgets["The Final Clue"].restart_requested.connect(self.restart_level4)
         self.lab_widgets["Object Detection"].clear_requested.connect(lambda: self.clear_evidence(2))
         self.lab_widgets["Object Detection"].evidence_requested.connect(lambda path: self.open_evidence_path(path, 2))
         self.lab_widgets["Eyes Online"].reset_requested.connect(lambda: self.clear_evidence(1))
@@ -449,6 +451,12 @@ class MainWindow(QMainWindow):
 
     def on_sidebar_changed(self, index: int):
         self.stacked_widget.setCurrentIndex(index)
+        if index != 2:
+            self.lab_widgets["Object Detection"].pause_playback()
+        if index != 3:
+            self.lab_widgets["The Red Bag"].pause_playback()
+        if index != 4:
+            self.lab_widgets["The Final Clue"].invalidate_live_processing()
         if 1 <= index <= 4:
             name = ["Eyes Online", "Object Detection", "The Red Bag", "The Final Clue"][index - 1]
             self.current_lab = self.lab_widgets[name]
@@ -627,9 +635,8 @@ class MainWindow(QMainWindow):
                 kind = self.worker.input_source.source_type.value if self.worker and self.worker.input_source.source_type else ""
                 if kind != "video":
                     return
-                if hasattr(self.current_lab, "set_frame_position"):
-                    self.current_lab.set_frame_position(frame_number, frame_count)
-                self.current_lab.process_frame(frame)
+                if hasattr(self.current_lab, "submit_video_frame"):
+                    self.current_lab.submit_video_frame(frame, frame_number, frame_count, source_generation)
             except Exception as exc:
                 self.show_status_message(f"Image processing error: {exc}", "error")
 
@@ -641,8 +648,21 @@ class MainWindow(QMainWindow):
         self.worker.set_playing(playing)
         self.lab_widgets["The Final Clue"].set_playing(playing)
 
+    def restart_level4(self):
+        lab = self.lab_widgets["The Final Clue"]
+        if self.worker and self.worker.input_source.is_opened() and self.worker.input_source.source_type.value == "video":
+            self.worker.set_playing(False)
+            lab.set_playing(False)
+            lab.invalidate_live_processing()
+            lab.reset()
+            self.worker.seek_frame(0)
+
     def on_playback_finished(self):
         self.lab_widgets["The Final Clue"].set_playing(False)
+        self.lab_widgets["The Final Clue"].media_controls.set_frame_position(
+            max(0, self.lab_widgets["The Final Clue"].frame_count - 1),
+            self.lab_widgets["The Final Clue"].frame_count,
+        )
         self.show_status_message("Video reached the end.", "info")
 
     def clear_evidence(self, level=None):
@@ -658,6 +678,7 @@ class MainWindow(QMainWindow):
         elif level == 3:
             self.lab_widgets["The Red Bag"].reset()
         else:
+            self.lab_widgets["The Final Clue"].invalidate_live_processing()
             if self.worker:
                 self.worker.set_playing(False)
                 with self.worker._source_lock:
@@ -692,6 +713,7 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event):
         self.lab_widgets["Object Detection"].shutdown_media()
         self.lab_widgets["The Red Bag"].shutdown_media()
+        self.lab_widgets["The Final Clue"].stop_tracking_worker()
         for lab in self.lab_widgets.values():
             inference_worker = getattr(lab, "worker", None)
             if inference_worker and inference_worker.isRunning():

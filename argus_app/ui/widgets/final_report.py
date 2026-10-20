@@ -6,7 +6,6 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QComboBox, QFileDialog, QGroupBox, QHBoxLayout, QLabel, QPushButton, QTextEdit, QVBoxLayout, QWidget
 
 from evidence.registry import EvidenceEntry, registry
-from evidence.artifacts import documentary_records, missing_manifest_assets
 from evidence.labels import display_module_label
 from ui.style import COLORS, FONTS, RADIUS, SPACING
 
@@ -155,16 +154,6 @@ class FinalReportWidget(QWidget):
                 report += f" Interpretation: {entry.interpretation or 'not recorded'}. Uncertainty: {entry.uncertainty}.\n"
         else:
             report += "_No additional investigator notes have been recorded._\n"
-        supplied_records = documentary_records()
-        if supplied_records:
-            report += "\n### Supplied record files\n"
-            for record in supplied_records:
-                report += f"- **{record['filename']}** (`{record['path']}`):\n\n  ```text\n  {record['content'].strip()}\n  ```\n"
-        missing = missing_manifest_assets()
-        if missing:
-            report += "\n### Manifest files missing from this checkout\n"
-            report += "The following evidence was not available for this report; its contents are not assumed:\n"
-            report += "\n".join(f"- **{item['id']} · `{item['filename']}`:** {item['purpose']}" for item in missing) + "\n"
 
         report += "\n## Computer-vision results\n"
         if computer:

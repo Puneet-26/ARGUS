@@ -6,6 +6,7 @@ from pathlib import Path
 import cv2
 from PySide6.QtCore import QObject, Qt, QThread, QTimer, Signal, Slot
 from PySide6.QtWidgets import (
+    QCheckBox,
     QFileDialog,
     QFrame,
     QHBoxLayout,
@@ -279,6 +280,7 @@ class Lab2DetectionWidget(LabWidget):
         self.image_reader = None
         self.auto_detect_after_image_load = False
         self._focus_annotated = False
+        self._live_pending = None
         super().__init__("Level 2: The Missing Phone", parent)
         self.playback_thread = QThread(self)
         self.playback_worker = VideoPlaybackWorker()
@@ -312,6 +314,11 @@ class Lab2DetectionWidget(LabWidget):
         self.run_button.setEnabled(False)
         self.run_button.clicked.connect(self.run_detection)
         controls.addWidget(self.run_button)
+        self.live_checkbox = QCheckBox("Live YOLO during playback")
+        self.live_checkbox.setChecked(True)
+        self.live_checkbox.setToolTip("Runs YOLO off the interface thread. Intermediate frames are dropped when inference is busy.")
+        self.live_checkbox.toggled.connect(self._toggle_live_detection)
+        controls.addWidget(self.live_checkbox)
         self.clear_button = QPushButton("Clear")
         self.clear_button.setEnabled(False)
         self.clear_button.clicked.connect(self.clear_requested.emit)
@@ -380,6 +387,10 @@ class Lab2DetectionWidget(LabWidget):
         self.play_button.setEnabled(False)
         self.play_button.clicked.connect(self.toggle_playback)
         self.video_navigation.addWidget(self.play_button)
+        self.restart_button = QPushButton("Restart")
+        self.restart_button.setEnabled(False)
+        self.restart_button.clicked.connect(self.restart_video)
+        self.video_navigation.addWidget(self.restart_button)
         self.frame_slider = QSlider(Qt.Horizontal)
         self.frame_slider.setRange(0, 0)
         self.frame_slider.setEnabled(False)
@@ -503,9 +514,6 @@ class Lab2DetectionWidget(LabWidget):
             self.evidence_requested.emit(path)
 
     def load_media(self, path: str, auto_detect=False):
-        if self.worker and self.worker.isRunning():
-            self.status.setText("Wait for the current YOLO run to finish before replacing evidence.")
-            return False
         media = Path(path)
         suffix = media.suffix.lower()
         if suffix not in IMAGE_SUFFIXES | VIDEO_SUFFIXES:
@@ -522,6 +530,7 @@ class Lab2DetectionWidget(LabWidget):
         self.auto_detect_after_image_load = False
         self.media_path = str(media.resolve())
         self.media_kind = "video" if suffix in VIDEO_SUFFIXES else "image"
+        self._live_pending = None
         self.last_records = None
         self.last_summary = ""
         self.frame_results = []
@@ -534,6 +543,7 @@ class Lab2DetectionWidget(LabWidget):
         self.results_summary.setText("Predictions cover model-supported classes only; detections do not identify people or prove an event.")
         self._populate_detection_list([])
         self.run_button.setEnabled(False)
+        self.restart_button.setEnabled(False)
         self.record_button.setEnabled(False)
         self.clear_button.setEnabled(True)
         self.open_button.setEnabled(True)
@@ -600,16 +610,23 @@ class Lab2DetectionWidget(LabWidget):
             return
         self.video_fps = float(fps or 0.0)
         self.video_frame_count = int(frame_count or 0)
+        self.restart_button.setEnabled(True)
         self.frame_slider.setRange(0, max(0, self.video_frame_count - 1))
         self.frame_slider.setEnabled(self.video_frame_count > 1)
         self.play_button.setEnabled(True)
+        self.run_button.setEnabled(True)
+        self.clear_button.setEnabled(True)
         self._set_video_frame(frame, frame_number)
+        if self.live_checkbox.isChecked():
+            self._queue_live_detection(frame, frame_number)
         self.status.setText(f"{Path(self.media_path).name} · video · {self.video_frame_count or 'unknown'} frames · {self.video_fps:.2f} FPS")
 
     @Slot(object, int, int)
     def on_video_frame(self, frame, frame_number, generation):
         if self.media_kind == "video" and generation == self._video_generation:
             self._set_video_frame(frame, frame_number)
+            if self.live_checkbox.isChecked():
+                self._queue_live_detection(frame, frame_number)
             if self._infer_after_seek:
                 self._infer_after_seek = False
                 QTimer.singleShot(0, self.run_detection)
@@ -617,9 +634,11 @@ class Lab2DetectionWidget(LabWidget):
     def _set_video_frame(self, frame, frame_number):
         self.current_frame = frame.copy()
         self.current_frame_number = int(frame_number)
-        self.original_display.set_image(self.cv_to_pixmap(frame))
+        if not self.live_checkbox.isChecked():
+            self.original_display.set_image(self.cv_to_pixmap(frame))
         self._update_video_position(self.current_frame_number)
-        self._clear_stale_result("Frame changed. Run YOLO to inspect this frame.")
+        if not self.live_checkbox.isChecked():
+            self._clear_stale_result("Frame changed. Run YOLO to inspect this frame.")
 
     def _update_video_position(self, frame_number):
         self.frame_slider.blockSignals(True)
@@ -647,6 +666,7 @@ class Lab2DetectionWidget(LabWidget):
             self.run_button.setEnabled(False)
             self.play_button.setEnabled(False)
             self.frame_slider.setEnabled(False)
+            self.restart_button.setEnabled(False)
             self.original_display.set_image(None)
             self.original_display.setText(message)
             self.status.setText(f"Video could not be loaded: {message}")
@@ -656,6 +676,44 @@ class Lab2DetectionWidget(LabWidget):
     def on_video_ended(self, generation):
         if generation == self._video_generation:
             self.play_button.setText("Play")
+
+    def restart_video(self):
+        if self.media_kind == "video":
+            self.set_playing_requested.emit(False)
+            self.play_button.setText("Play")
+            self._media_generation += 1
+            self._live_pending = None
+            self._clear_stale_result("Restarted. Waiting for live YOLO results." if self.live_checkbox.isChecked() else "Restarted. Run YOLO to inspect a frame.")
+            self.seek_requested.emit(0, self._video_generation)
+
+    def pause_playback(self):
+        self.set_playing_requested.emit(False)
+        self.play_button.setText("Play")
+        self._live_pending = None
+        if self.worker is not None and self.worker.isRunning() and getattr(self.worker, "live_request", False):
+            self._media_generation += 1
+
+    def _toggle_live_detection(self, enabled):
+        if self.media_kind != "video":
+            return
+        if self.worker is None or not self.worker.isRunning() or getattr(self.worker, "live_request", False):
+            self._media_generation += 1
+        self._live_pending = None
+        if enabled and self.current_frame is not None:
+            self._queue_live_detection(self.current_frame, self.current_frame_number)
+        elif not enabled:
+            self._live_pending = None
+            if self.worker is None or not self.worker.isRunning():
+                self._clear_stale_result("Live YOLO is off. Run YOLO on a selected frame.")
+
+    def _queue_live_detection(self, frame, frame_number):
+        if not self.live_checkbox.isChecked() or self.media_kind != "video":
+            return
+        request = (frame.copy(), int(frame_number), self._video_generation, self._media_generation)
+        if self.worker is not None and self.worker.isRunning():
+            self._live_pending = request  # one latest frame only; stale intermediates are dropped
+            return
+        self._start_detection(request[0], request[1], live=True, generations=request[2:])
 
     def toggle_playback(self):
         if self.media_kind != "video" or self.current_frame is None:
@@ -667,6 +725,8 @@ class Lab2DetectionWidget(LabWidget):
     def seek_selected_frame(self):
         self.set_playing_requested.emit(False)
         self.play_button.setText("Play")
+        self._media_generation += 1
+        self._live_pending = None
         self._infer_after_seek = self.last_records is not None
         self.seek_requested.emit(self.frame_slider.value(), self._video_generation)
 
@@ -732,23 +792,34 @@ class Lab2DetectionWidget(LabWidget):
             return
         if self.worker and self.worker.isRunning():
             return
-        self.set_playing_requested.emit(False)
-        self.play_button.setText("Play")
-        self.open_button.setEnabled(False)
-        self.run_button.setEnabled(False)
-        self.clear_button.setEnabled(False)
-        self.record_button.setEnabled(False)
-        self.play_button.setEnabled(False)
-        self.frame_slider.setEnabled(False)
-        self.confidence_slider.setEnabled(False)
-        where = f"frame {self.current_frame_number:,}" if self.media_kind == "video" and self.current_frame_number is not None else "image"
-        self.status.setText(f"{Path(self.media_path).name} · running YOLO on {where}…")
-        self.results_summary.setText("Running actual local-model inference… Previous successful output is retained until this run succeeds.")
+        self._start_detection(self.current_frame, self.current_frame_number, live=False)
+
+    def _start_detection(self, frame, frame_number, live=False, generations=None):
+        if not self.media_path or frame is None or (self.worker and self.worker.isRunning()):
+            return
+        if live:
+            if generations != (self._video_generation, self._media_generation) or not self.live_checkbox.isChecked():
+                return
+        else:
+            self.set_playing_requested.emit(False)
+            self.play_button.setText("Play")
+            self.open_button.setEnabled(False)
+            self.run_button.setEnabled(False)
+            self.clear_button.setEnabled(False)
+            self.record_button.setEnabled(False)
+            self.play_button.setEnabled(False)
+            self.frame_slider.setEnabled(False)
+            self.restart_button.setEnabled(False)
+            self.confidence_slider.setEnabled(False)
+        where = f"frame {frame_number:,}" if self.media_kind == "video" and frame_number is not None else "image"
+        if not live:
+            self.status.setText(f"{Path(self.media_path).name} · running YOLO on {where}…")
+            self.results_summary.setText("Running actual local-model inference… Previous successful output is retained until this run succeeds.")
         self.worker = DetectionWorker(
             self.media_path,
-            self.current_frame,
+            frame,
             media_kind=self.media_kind,
-            frame_number=self.current_frame_number,
+            frame_number=frame_number,
             fps=self.video_fps,
             confidence=self.confidence_slider.value() / 100.0,
             parent=self,
@@ -756,6 +827,8 @@ class Lab2DetectionWidget(LabWidget):
         self.worker.progress.connect(self.status.setText)
         self.worker.completed.connect(self.on_detection_complete)
         self.worker.failed.connect(self.on_detection_failed)
+        self.worker.live_request = bool(live)
+        self.worker.request_generations = generations or (self._video_generation, self._media_generation)
         self.worker.start()
 
     def on_detection_complete(self, frames, note):
@@ -768,42 +841,75 @@ class Lab2DetectionWidget(LabWidget):
         self.frame_results = frames
         self.last_summary = note
         selected = frames[0]
+        live_request = bool(getattr(inference_worker, "live_request", False))
+        if (getattr(inference_worker, "request_generations", None) != (self._video_generation, self._media_generation)
+                or (live_request and not self.live_checkbox.isChecked())):
+            self.worker = None
+            inference_worker.deleteLater()
+            self._start_next_live_request()
+            return
         self.last_records = selected["records"]
-        self.current_frame = selected["original"].copy()
-        self.current_frame_number = selected.get("frame_number")
-        if self.media_kind == "video" and self.current_frame_number is not None:
-            self._update_video_position(self.current_frame_number)
+        if not live_request:
+            self.current_frame = selected["original"].copy()
+            self.current_frame_number = selected.get("frame_number")
+            if self.media_kind == "video" and self.current_frame_number is not None:
+                self._update_video_position(self.current_frame_number)
         self.original_display.set_image(self.cv_to_pixmap(selected["original"]))
         self.result_display.set_image(self.cv_to_pixmap(selected["annotated"]))
         self._populate_detection_list(self.last_records, selected.get("frame_number"))
-        self.results_summary.setText(note)
-        self.status.setText(f"{Path(self.media_path).name} · inference complete")
+        frame_no = selected.get("frame_number")
+        if live_request and frame_no is not None:
+            timestamp = frame_no / self.video_fps if self.video_fps > 0 else None
+            stamp = f" · {timestamp:.2f}s" if timestamp is not None else ""
+            self.results_summary.setText(f"Live result · frame {frame_no:,}{stamp} · {note}")
+        else:
+            self.results_summary.setText(note)
+        self.status.setText(f"{Path(self.media_path).name} · {'live result' if live_request else 'inference complete'} · frame {selected.get('frame_number')}")
         self.open_button.setEnabled(True)
         self.run_button.setEnabled(True)
         self.clear_button.setEnabled(True)
         self.record_button.setEnabled(True)
         self.play_button.setEnabled(self.media_kind == "video" and self.current_frame is not None)
+        self.restart_button.setEnabled(self.media_kind == "video" and self.current_frame is not None)
         self.frame_slider.setEnabled(self.media_kind == "video" and self.video_frame_count > 1)
         self.confidence_slider.setEnabled(True)
         self.worker = None
         inference_worker.deleteLater()
+        self._start_next_live_request()
+
+    def _start_next_live_request(self):
+        pending = self._live_pending
+        self._live_pending = None
+        if pending is not None and self.live_checkbox.isChecked():
+            frame, number, video_generation, media_generation = pending
+            self._start_detection(frame, number, live=True, generations=(video_generation, media_generation))
 
     def on_detection_failed(self, message):
         inference_worker = self.sender()
         if not self.media_path or inference_worker is not self.worker:
             return
-        self.status.setText(f"Detection could not run: {message}")
+        live_request = bool(getattr(inference_worker, "live_request", False))
+        if getattr(inference_worker, "request_generations", None) != (self._video_generation, self._media_generation):
+            self.worker = None
+            inference_worker.deleteLater()
+            self._start_next_live_request()
+            return
+        if not live_request:
+            self.status.setText(f"Detection could not run: {message}")
         self.open_button.setEnabled(True)
         self.run_button.setEnabled(self.current_frame is not None)
         self.clear_button.setEnabled(True)
         self.record_button.setEnabled(bool(self.frame_results))
         self.play_button.setEnabled(self.media_kind == "video" and self.current_frame is not None)
+        self.restart_button.setEnabled(self.media_kind == "video" and self.current_frame is not None)
         self.frame_slider.setEnabled(self.media_kind == "video" and self.video_frame_count > 1)
         self.confidence_slider.setEnabled(True)
         self.results_summary.setText("The previous successful result, if any, is retained. Check the selected file, model weights, and installed dependencies.")
-        self.log_message.emit(message, "error")
         self.worker = None
         inference_worker.deleteLater()
+        if not live_request:
+            self.log_message.emit(message, "error")
+        self._start_next_live_request()
 
     def _rerun_for_confidence(self):
         if self.media_path and self.current_frame is not None and not (self.worker and self.worker.isRunning()):

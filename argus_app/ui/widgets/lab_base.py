@@ -1,35 +1,30 @@
-"""
-Base class for all lab widgets.
-"""
+"""Shared base classes and display helpers for the level workspaces."""
+
+import cv2
+import numpy as np
+
+from PySide6.QtCore import QSignalBlocker, Qt, Signal
+from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
     QPushButton,
-    QSlider,
-    QWidget,
-    QVBoxLayout,
     QSizePolicy,
+    QSlider,
+    QVBoxLayout,
+    QWidget,
 )
-from PySide6.QtCore import QSignalBlocker, Qt, Signal
-from PySide6.QtGui import QImage, QPixmap
-import cv2
-import numpy as np
 
 
 class LabWidget(QWidget):
     """Base class for lab widgets."""
 
-    # Signal emitted when processing completes
-    frame_processed = Signal(object)  # dict with results
-
-    # Signal for log messages
-    log_message = Signal(str, str)  # (message, level: 'info'/'warning'/'error')
+    log_message = Signal(str, str)
 
     def __init__(self, lab_name, parent=None):
         super().__init__(parent)
         self.lab_name = lab_name
-        self.use_solution = True
         self.setup_ui()
 
     def setup_ui(self):
@@ -38,26 +33,6 @@ class LabWidget(QWidget):
 
         self.content_widget = QWidget()
         layout.addWidget(self.content_widget, 1)
-
-    def process_frame(self, frame):
-        """
-        Process a frame - override in subclasses.
-
-        Args:
-            frame: Input frame (BGR)
-
-        Returns:
-            dict with keys like 'output', 'preview', 'error', etc.
-        """
-        return {'output': frame, 'error': None}
-
-    def reset(self):
-        """Reset lab state - override in subclasses if needed."""
-        pass
-
-    def get_parameters(self):
-        """Get current parameter values - override in subclasses."""
-        return {}
 
     @staticmethod
     def cv_to_qimage(cv_img):
@@ -93,14 +68,14 @@ class LabWidget(QWidget):
 
         pixmap = QPixmap.fromImage(qimg)
 
-        if max_width or max_height:
+        if max_width is not None or max_height is not None:
             w = max(1, max_width or pixmap.width())
             h = max(1, max_height or pixmap.height())
             pixmap = pixmap.scaled(
                 w,
                 h,
                 Qt.KeepAspectRatio,
-                Qt.SmoothTransformation
+                Qt.SmoothTransformation,
             )
 
         return pixmap
@@ -111,6 +86,7 @@ class MediaTimelineControls(QFrame):
 
     play_pause_requested = Signal()
     seek_requested = Signal(int)
+    restart_requested = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -134,6 +110,11 @@ class MediaTimelineControls(QFrame):
         self.play_button.clicked.connect(self.play_pause_requested.emit)
         layout.addWidget(self.play_button)
 
+        self.restart_button = QPushButton("Restart")
+        self.restart_button.setEnabled(False)
+        self.restart_button.clicked.connect(self.restart_requested.emit)
+        layout.addWidget(self.restart_button)
+
         self.seek_slider = QSlider(Qt.Horizontal)
         self.seek_slider.setRange(0, 0)
         self.seek_slider.setEnabled(False)
@@ -154,6 +135,7 @@ class MediaTimelineControls(QFrame):
         self.filename_label.setText(str(filename or "No evidence selected"))
         is_video = self.source_type == "video"
         self.play_button.setEnabled(is_video)
+        self.restart_button.setEnabled(is_video)
         self.seek_slider.setEnabled(is_video and self.frame_count > 1)
         with QSignalBlocker(self.seek_slider):
             self.seek_slider.setRange(0, max(0, self.frame_count - 1))
@@ -193,6 +175,7 @@ class MediaTimelineControls(QFrame):
         self.filename_label.setText("No evidence selected")
         self.play_button.setText("Play")
         self.play_button.setEnabled(False)
+        self.restart_button.setEnabled(False)
         self.seek_slider.setRange(0, 0)
         self.seek_slider.setEnabled(False)
         self.position_label.setText("Open a video to select a frame.")
