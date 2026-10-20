@@ -7,7 +7,6 @@ from PySide6.QtWidgets import (
     QComboBox,
     QFileDialog,
     QFrame,
-    QGroupBox,
     QGridLayout,
     QHBoxLayout,
     QHeaderView,
@@ -25,7 +24,7 @@ from PySide6.QtWidgets import (
 
 from evidence.registry import EvidenceEntry, registry
 from evidence.labels import display_module_label
-from ui.style import COLORS, FONTS, RADIUS
+from ui.style import COLORS
 
 
 class EvidenceNotebookWidget(QWidget):

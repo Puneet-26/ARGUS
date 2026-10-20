@@ -1,8 +1,7 @@
 """Level 4: review a video timeline and inspect motion line crossings."""
 
 import os
-from pathlib import Path
-from PySide6.QtCore import Qt, QRunnable, QThreadPool, QObject, Signal, Slot
+from PySide6.QtCore import QRunnable, QThreadPool, QObject, Signal, Slot
 from PySide6.QtWidgets import (
     QComboBox,
     QFrame,
@@ -18,14 +17,7 @@ from PySide6.QtWidgets import (
 
 from evidence.registry import EvidenceEntry, registry
 from evidence.artifacts import save_image
-from ui.style import COLORS, FONTS
 from ui.widgets.lab_base import ImageDisplayLabel, LabWidget, MediaTimelineControls
-from level_codes.level4 import (
-    TRACKING_MAX_STEP_FRACTION,
-    TRACKING_MIN_AREA,
-    process_tracking_frame,
-)
-from level_codes.level3 import COLOR_PRESETS
 
 
 class TrackingJobSignals(QObject):
@@ -35,8 +27,9 @@ class TrackingJobSignals(QObject):
 class TrackingJob(QRunnable):
     """Run the authoritative Level 4 pipeline away from the interface thread."""
 
-    def __init__(self, frame, frame_number, source_generation, epoch, revision, parameters):
+    def __init__(self, module, frame, frame_number, source_generation, epoch, revision, parameters):
         super().__init__()
+        self.module = module
         self.frame = frame.copy()
         self.frame_number = int(frame_number)
         self.source_generation = int(source_generation)
@@ -47,7 +40,7 @@ class TrackingJob(QRunnable):
 
     def run(self):
         try:
-            pipeline = process_tracking_frame(self.frame, **self.parameters)
+            pipeline = self.module.process_tracking_frame(self.frame, **self.parameters)
             error = ""
         except Exception as exc:
             pipeline = None
@@ -66,8 +59,9 @@ class Lab4MotionWidget(LabWidget):
     restart_requested = Signal()
 
     def __init__(self, parent=None):
-        self.min_area = TRACKING_MIN_AREA
-        self.max_step_fraction = TRACKING_MAX_STEP_FRACTION
+        self.level_module = None
+        self.min_area = None
+        self.max_step_fraction = None
         configured_line = os.environ.get("ARGUS_LEVEL4_EXIT_LINE_X_FRACTION", "").strip()
         try:
             self.exit_line_fraction = float(configured_line) if configured_line else None
@@ -92,13 +86,12 @@ class Lab4MotionWidget(LabWidget):
         self.track_lost = False
         self.crossing_direction = "either"
         self.target_color = "Red"
-        preset = COLOR_PRESETS["Red"]
-        self.target_h_min = preset["h_min"]
-        self.target_h_max = preset["h_max"]
-        self.target_s_min = preset["s_min"]
-        self.target_s_max = 255
-        self.target_v_min = preset["v_min"]
-        self.target_v_max = 255
+        self.target_h_min = None
+        self.target_h_max = None
+        self.target_s_min = None
+        self.target_s_max = None
+        self.target_v_min = None
+        self.target_v_max = None
         self._tracking_pool = None
         self._tracking_busy = False
         self._tracking_pending = None
@@ -108,6 +101,37 @@ class Lab4MotionWidget(LabWidget):
         super().__init__("Level 4: Track the Red Bag", parent)
         self._tracking_pool = QThreadPool(self)
         self.reset()
+
+    def ensure_implementation(self):
+        if self.level_module is not None:
+            return True
+        module, message = self.load_level_implementation(
+            4,
+            ("process_tracking_frame", "TRACKING_MIN_AREA", "TRACKING_MAX_STEP_FRACTION", "COLOR_PRESETS"),
+        )
+        if module is None:
+            self.analysis_status.setText(message)
+            return False
+        self.level_module = module
+        self.min_area = module.TRACKING_MIN_AREA
+        self.max_step_fraction = module.TRACKING_MAX_STEP_FRACTION
+        self._set_target_colour_parameters(self.target_color)
+        if self.analysis_status.text().startswith("Level "):
+            self.analysis_status.setText(
+                "Upload a video to track colour candidates. No doorway crossing is reported unless a reliable line is configured."
+            )
+        return True
+
+    def _set_target_colour_parameters(self, color_name):
+        preset = self.level_module.COLOR_PRESETS.get(color_name)
+        if preset is None:
+            raise ValueError(f"Unsupported tracking colour: {color_name}")
+        self.target_h_min = preset["h_min"]
+        self.target_h_max = preset["h_max"]
+        self.target_s_min = preset["s_min"]
+        self.target_s_max = preset["s_max"]
+        self.target_v_min = preset["v_min"]
+        self.target_v_max = preset["v_max"]
 
     def setup_ui(self):
         super().setup_ui()
@@ -183,6 +207,8 @@ class Lab4MotionWidget(LabWidget):
         return panel
 
     def set_media_info(self, filename, source_type, frame_count=1, fps=0.0):
+        if not self.ensure_implementation():
+            return
         self.source_kind = getattr(source_type, "value", source_type)
         if self.source_kind != "video":
             self.clear_media()
@@ -208,13 +234,9 @@ class Lab4MotionWidget(LabWidget):
 
     def _target_color_changed(self, color_name):
         self.target_color = color_name
-        preset = COLOR_PRESETS.get(color_name, COLOR_PRESETS["Red"])
-        self.target_h_min = preset["h_min"]
-        self.target_h_max = preset["h_max"]
-        self.target_s_min = preset["s_min"]
-        self.target_s_max = 255
-        self.target_v_min = preset["v_min"]
-        self.target_v_max = 255
+        if self.level_module is None:
+            return
+        self._set_target_colour_parameters(color_name)
         self._restart_tracking()
 
     def _restart_tracking(self):
@@ -245,7 +267,7 @@ class Lab4MotionWidget(LabWidget):
 
     def submit_video_frame(self, frame, frame_number, frame_count, source_generation):
         """Queue only the newest frame while the tracking worker is occupied."""
-        if frame is None or self.source_kind != "video":
+        if not self.ensure_implementation() or frame is None or self.source_kind != "video":
             return
         generation = int(source_generation)
         if self._tracking_source_generation != generation:
@@ -286,6 +308,7 @@ class Lab4MotionWidget(LabWidget):
         _, width = frame.shape[:2]
         line_x = round(width * self.exit_line_fraction) if self.exit_line_fraction is not None else None
         job = TrackingJob(
+            self.level_module,
             frame,
             frame_number,
             source_generation,

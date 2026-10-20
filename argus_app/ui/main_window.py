@@ -460,6 +460,9 @@ class MainWindow(QMainWindow):
         if 1 <= index <= 4:
             name = ["Eyes Online", "Object Detection", "The Red Bag", "The Final Clue"][index - 1]
             self.current_lab = self.lab_widgets[name]
+            ensure_implementation = getattr(self.current_lab, "ensure_implementation", None)
+            if ensure_implementation is not None:
+                ensure_implementation()
             self.dashboard.set_active_stage(name)
             self.dashboard.set_level_status(name, "in_progress")
             if name == "The Final Clue" and self.worker and self.worker.input_source.is_opened():
@@ -514,6 +517,22 @@ class MainWindow(QMainWindow):
             level = index if 1 <= index <= 4 else None
         if level not in (1, 2, 3, 4):
             self.show_status_message("Choose an investigation level, then open its evidence.", "warning")
+            return False
+
+        level_widget_name = {
+            1: "Eyes Online",
+            2: "Object Detection",
+            3: "The Red Bag",
+            4: "The Final Clue",
+        }[level]
+        level_widget = self.lab_widgets[level_widget_name]
+        if not level_widget.ensure_implementation():
+            message_label = next(
+                getattr(level_widget, attribute)
+                for attribute in ("status", "status_label", "contour_info", "analysis_status")
+                if hasattr(level_widget, attribute)
+            )
+            self.show_status_message(message_label.text(), "warning")
             return False
 
         suffix = Path(path).suffix.lower()

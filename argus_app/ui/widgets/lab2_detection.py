@@ -224,7 +224,15 @@ class DetectionWorker(QThread):
             self.progress.emit("Running CPU YOLO inference on the selected frame…")
             if self.isInterruptionRequested():
                 return
-            from level_codes.level2 import infer_frame
+            try:
+                from level_codes.level2 import infer_frame
+            except ModuleNotFoundError as exc:
+                if exc.name in {"level_codes.level2", "level_codes"}:
+                    raise RuntimeError(
+                        "Level implementation not found: level_codes/level2.py. "
+                        "Add the corresponding level code file and try again."
+                    ) from exc
+                raise
             with self._model_lock:
                 annotated, records = infer_frame(model, self.frame, self.confidence, 640)
             if self.isInterruptionRequested():
@@ -281,6 +289,7 @@ class Lab2DetectionWidget(LabWidget):
         self.auto_detect_after_image_load = False
         self._focus_annotated = False
         self._live_pending = None
+        self.level_module = None
         super().__init__("Level 2: The Missing Phone", parent)
         self.playback_thread = QThread(self)
         self.playback_worker = VideoPlaybackWorker()
@@ -415,6 +424,18 @@ class Lab2DetectionWidget(LabWidget):
         self.record_button.clicked.connect(self.record_finding)
         feedback.addWidget(self.record_button)
         layout.addLayout(feedback)
+
+    def ensure_implementation(self):
+        if self.level_module is not None:
+            return True
+        module, message = self.load_level_implementation(2, ("infer_frame",))
+        if module is None:
+            self.status.setText(message)
+            return False
+        self.level_module = module
+        if self.status.text().startswith("Level "):
+            self.status.setText("Choose an image or video. Pause or seek to a frame before running YOLO.")
+        return True
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -787,6 +808,8 @@ class Lab2DetectionWidget(LabWidget):
         self.status.setText("Choose an image or video. Pause or seek to a frame before running YOLO.")
 
     def run_detection(self):
+        if not self.ensure_implementation():
+            return
         if not self.media_path or self.current_frame is None:
             self.status.setText("Choose a decodable image or video frame before running YOLO.")
             return

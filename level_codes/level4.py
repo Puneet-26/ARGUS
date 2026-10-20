@@ -10,20 +10,16 @@ import math
 import cv2
 import numpy as np
 
-import sys
-
 ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-try:
-    from level_codes.level3 import COLOR_PRESETS
-except ImportError:
-    from level3 import COLOR_PRESETS
 
 OUTPUT_DIR = ROOT / "outputs" / "level4"
 TRACKING_MIN_AREA = 500
 TRACKING_MAX_STEP_FRACTION = 0.18
+COLOR_PRESETS = {
+    "Red": {"h_min": 170, "h_max": 10, "s_min": 70, "s_max": 255, "v_min": 40, "v_max": 255},
+    "Green": {"h_min": 35, "h_max": 85, "s_min": 60, "s_max": 255, "v_min": 40, "v_max": 255},
+    "Blue": {"h_min": 100, "h_max": 130, "s_min": 80, "s_max": 255, "v_min": 40, "v_max": 255},
+}
 
 
 def process_tracking_frame(frame, previous_centroid=None, trail=None, segments=None,

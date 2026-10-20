@@ -1,5 +1,7 @@
 """Shared base classes and display helpers for the level workspaces."""
 
+import importlib
+
 import cv2
 import numpy as np
 
@@ -33,6 +35,43 @@ class LabWidget(QWidget):
 
         self.content_widget = QWidget()
         layout.addWidget(self.content_widget, 1)
+
+    @staticmethod
+    def load_level_implementation(level_number, required_names=()):
+        """Load one level on demand and describe only expected availability issues."""
+        module_name = f"level_codes.level{int(level_number)}"
+        source_file = f"level_codes/level{int(level_number)}.py"
+        importlib.invalidate_caches()
+        try:
+            module = importlib.import_module(module_name)
+        except ModuleNotFoundError as exc:
+            if exc.name in {module_name, "level_codes"}:
+                return None, (
+                    f"Level implementation not found: {source_file}. "
+                    "Add the corresponding level code file and try again."
+                )
+            return None, (
+                f"Level {level_number} cannot load because '{exc.name}' is missing. "
+                "Install the required dependency or add the missing level module."
+            )
+        except ImportError as exc:
+            if getattr(exc, "name", None) in {module_name, "level_codes"}:
+                return None, (
+                    f"Level implementation not found: {source_file}. "
+                    "Add the corresponding level code file and try again."
+                )
+            if getattr(exc, "name", None):
+                return None, (
+                    f"Level {level_number} cannot load because '{exc.name}' is unavailable. "
+                    "Install the required dependency to use this level."
+                )
+            raise
+
+        missing = [name for name in required_names if not hasattr(module, name)]
+        if missing:
+            names = ", ".join(name if name.isupper() else f"{name}()" for name in missing)
+            return None, f"Level implementation incomplete: {source_file} is missing {names}."
+        return module, ""
 
     @staticmethod
     def cv_to_qimage(cv_img):

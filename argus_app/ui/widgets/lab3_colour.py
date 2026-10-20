@@ -84,15 +84,18 @@ class Lab3ColourWidget(LabWidget):
         self.playback_worker.closed.connect(self.playback_thread.quit, Qt.DirectConnection)
         self.playback_thread.finished.connect(self.playback_worker.deleteLater)
         self.playback_thread.start()
-        self.load_modules()
 
-    def load_modules(self):
-        try:
-            from level_codes import level3
-            self.solution_module = level3
-        except ImportError as exc:
-            self.solution_module = None
-            self.log_message.emit(f"Colour analysis is unavailable: {exc}", "error")
+    def ensure_implementation(self):
+        if self.solution_module is not None:
+            return True
+        module, message = self.load_level_implementation(3, ("process_color_preset",))
+        if module is None:
+            self.contour_info.setText(message)
+            return False
+        self.solution_module = module
+        if self.contour_info.text().startswith("Level "):
+            self.contour_info.setText("Choose a colour and select Detect Colour.")
+        return True
 
     def setup_ui(self):
         super().setup_ui()
@@ -353,13 +356,11 @@ class Lab3ColourWidget(LabWidget):
             self._segmentation_pool.waitForDone(3000)
 
     def run_colour_mask(self):
+        if not self.ensure_implementation():
+            return {"output": None, "error": self.contour_info.text(), "success": False}
         if self.last_frame is None:
             self.log_message.emit("Open Level 3 image or video evidence before segmenting.", "warning")
             return {"output": None, "error": "No evidence selected", "success": False}
-        if self.solution_module is None:
-            self.contour_info.setText("OpenCV segmentation code is unavailable.")
-            self.log_message.emit("Colour analysis is unavailable because its OpenCV module did not load.", "error")
-            return {"output": None, "error": "Segmentation unavailable", "success": False}
         if self.media_kind == "video":
             self._segmentation_revision += 1
             self._schedule_segmentation(self.last_frame, self.current_frame_number)

@@ -5,7 +5,6 @@ import argparse
 import json
 import os
 import cv2
-import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_WEIGHTS = ROOT / "assets" / "models" / "yolo11n.pt"

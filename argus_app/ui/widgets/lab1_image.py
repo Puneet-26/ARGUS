@@ -27,11 +27,6 @@ from evidence.artifacts import save_image
 from evidence.registry import EvidenceEntry, registry
 
 
-from level_codes.level1 import (
-    EFFECTS, ROI_ENLARGEMENT, apply_effect, process_roi,
-)
-
-
 class ImagePanel(QLabel):
     """Aspect preserving image view with optional drag and drop support."""
 
@@ -113,6 +108,7 @@ class Lab1ImageWidget(LabWidget):
         self.processed_frame = None
         self.enhanced_frame = None  # retained as an alias for existing app integrations
         self.evidence_name = ""
+        self.level_module = None
         super().__init__("Sight Repair", parent)
 
     def setup_ui(self):
@@ -130,7 +126,7 @@ class Lab1ImageWidget(LabWidget):
         controls.addWidget(self.upload_button)
 
         self.effect_selector = QComboBox()
-        self.effect_selector.addItems(EFFECTS)
+        self.effect_selector.addItems(("Grayscale", "CLAHE", "Threshold"))
         self.effect_selector.setMinimumHeight(42)
         self.effect_selector.setMinimumWidth(170)
         self.effect_selector.setToolTip("Choose the image effect to apply to the uploaded image.")
@@ -276,6 +272,26 @@ class Lab1ImageWidget(LabWidget):
     def set_evidence_name(self, name):
         self.evidence_name = str(name or "")
 
+    def ensure_implementation(self):
+        if self.level_module is not None:
+            return True
+        module, message = self.load_level_implementation(
+            1, ("apply_effect", "process_roi", "ROI_ENLARGEMENT")
+        )
+        if module is None:
+            self.status_label.setText(message)
+            self.status_label.setStyleSheet(
+                f"color: {COLORS['alert']}; font-size: {FONTS['size_sm']};"
+            )
+            return False
+        self.level_module = module
+        if self.status_label.text().startswith("Level "):
+            self.status_label.setText("Ready to upload an image.")
+            self.status_label.setStyleSheet(
+                f"color: {COLORS['text_muted']}; font-size: {FONTS['size_sm']};"
+            )
+        return True
+
     def _update_parameter_visibility(self):
         effect = self.effect_selector.currentText()
         has_image = self.raw_evidence_frame is not None
@@ -315,7 +331,9 @@ class Lab1ImageWidget(LabWidget):
         """Process the full frame and, if enabled, the configured ROI."""
         clip_limit = self.clahe_parameter_slider.value() / 10.0
         threshold_value = self.threshold_parameter_slider.value()
-        filtered_full_frame = apply_effect(frame, effect, clip_limit, threshold_value)
+        if not self.ensure_implementation():
+            raise RuntimeError(self.status_label.text())
+        filtered_full_frame = self.level_module.apply_effect(frame, effect, clip_limit, threshold_value)
         original_frame = frame.copy()
 
         if not self.roi_enable_check.isChecked():
@@ -325,7 +343,7 @@ class Lab1ImageWidget(LabWidget):
             self.roi_x_spin.value(), self.roi_y_spin.value(),
             self.roi_w_spin.value(), self.roi_h_spin.value(),
         )
-        processed_detail, region = process_roi(
+        processed_detail, region = self.level_module.process_roi(
             frame, effect, region=roi,
             clahe_clip_limit=clip_limit, threshold_value=threshold_value,
         )
@@ -333,6 +351,8 @@ class Lab1ImageWidget(LabWidget):
 
     def load_frame(self, frame):
         """Load and immediately process a valid decoded image."""
+        if not self.ensure_implementation():
+            return False
         if not isinstance(frame, np.ndarray) or frame.size == 0:
             self.status_label.setText("Could not load the image. Choose a valid, non-empty image file.")
             return False
@@ -379,7 +399,7 @@ class Lab1ImageWidget(LabWidget):
         if region:
             _, _, width_box, height_box = region
             self.status_label.setText(
-                f"ROI ({region[0]}, {region[1]}, {width_box}, {height_box}) · enlarged {ROI_ENLARGEMENT}× · "
+                f"ROI ({region[0]}, {region[1]}, {width_box}, {height_box}) · enlarged {self.level_module.ROI_ENLARGEMENT}× · "
                 f"source image {width} × {height} px"
             )
         else:
@@ -427,7 +447,7 @@ class Lab1ImageWidget(LabWidget):
             if region:
                 _, _, width_box, height_box = region
                 self.status_label.setText(
-                    f"ROI ({region[0]}, {region[1]}, {width_box}, {height_box}) · enlarged {ROI_ENLARGEMENT}×"
+                    f"ROI ({region[0]}, {region[1]}, {width_box}, {height_box}) · enlarged {self.level_module.ROI_ENLARGEMENT}×"
                 )
             else:
                 self.status_label.setText("Full image processed without ROI cropping.")
@@ -445,6 +465,8 @@ class Lab1ImageWidget(LabWidget):
             self.log_message.emit(f"Could not process the image: {exc}", "error")
 
     def record_result(self):
+        if not self.ensure_implementation():
+            return
         if self.raw_evidence_frame is None or self.processed_frame is None:
             self.log_message.emit("Load and process an image before recording a result.", "warning")
             return
@@ -454,7 +476,7 @@ class Lab1ImageWidget(LabWidget):
             self.log_message.emit(f"Could not save the processed result: {exc}", "error")
             return
         region_desc = (
-            f" ROI crop {self.roi_region} enlarged {ROI_ENLARGEMENT}×."
+            f" ROI crop {self.roi_region} enlarged {self.level_module.ROI_ENLARGEMENT}×."
             if self.roi_region
             else " Full image processed without ROI cropping."
         )
