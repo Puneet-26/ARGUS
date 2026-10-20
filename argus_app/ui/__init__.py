@@ -1,6 +1,1 @@
-"""
-ARGUS UI package.
-"""
-from .main_window import MainWindow
-
-__all__ = ['MainWindow']
+"""ARGUS desktop interface package."""

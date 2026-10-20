@@ -23,7 +23,6 @@ from core import FPSCounter, InputSource, downscale_frame, read_image_file
 from ui.style import COLORS, FONTS, MAIN_STYLE
 from ui.widgets.dashboard import DashboardWidget
 from ui.widgets.evidence_notebook import EvidenceNotebookWidget
-from ui.widgets.final_report import FinalReportWidget
 from ui.widgets.lab1_image import Lab1ImageWidget
 from ui.widgets.lab2_detection import IMAGE_SUFFIXES as LEVEL2_IMAGE_SUFFIXES, VIDEO_SUFFIXES as LEVEL2_VIDEO_SUFFIXES, Lab2DetectionWidget
 from ui.widgets.lab3_colour import Lab3ColourWidget
@@ -164,7 +163,6 @@ class MainWindow(QMainWindow):
         "3 · Colour ID",
         "4 · Timeline",
         "Notebook",
-        "Report",
         "Settings",
     ]
     PAGE_TITLES = {
@@ -217,7 +215,7 @@ class MainWindow(QMainWindow):
             if display is not None and hasattr(display, "upload_requested"):
                 display.upload_requested.connect(lambda level=level: self.choose_evidence(level))
                 display.file_dropped.connect(lambda path, level=level: self.open_evidence_path(path, level))
-        for widget in [*self.lab_widgets.values(), self.notebook_widget, self.report_widget, self.settings_widget]:
+        for widget in [*self.lab_widgets.values(), self.notebook_widget, self.settings_widget]:
             widget.log_message.connect(self.show_status_message)
 
     def setup_ui(self):
@@ -256,8 +254,6 @@ class MainWindow(QMainWindow):
 
         self.notebook_widget = EvidenceNotebookWidget()
         self.stacked_widget.addWidget(self._simple_page(self.notebook_widget))
-        self.report_widget = FinalReportWidget()
-        self.stacked_widget.addWidget(self._simple_page(self.report_widget))
         self.settings_widget = SettingsWidget()
         self.stacked_widget.addWidget(self._simple_page(self.settings_widget))
 
@@ -364,16 +360,18 @@ class MainWindow(QMainWindow):
             3: "Identify the Red Bag",
             4: "Track the Red Bag",
         }[level]
-        registry.add(EvidenceEntry(
+        saved = registry.add(EvidenceEntry(
             module=f"Checkpoint Level {level}: {title}", kind="checkpoint", value="Instructor checkpoint used",
             technique="Instructor-provided checkpoint", observation="Student used the checkpoint to continue the investigation.",
             interpretation="Progress was completed with checkpoint assistance; it is not independent completion.",
             uncertainty="High", evidence_id=f"E-0{level}", completion_mode="checkpoint",
             limitation="Checkpoint assisted progress; this entry is not an independent result from supplied evidence.",
         ))
+        if not saved:
+            self.show_status_message(registry.persistence_error or "Could not save the checkpoint.", "error")
+            return
         self.dashboard.sync_progress_from_registry()
         self.notebook_widget.refresh_table()
-        self.report_widget.generate_report()
         level_name = {
             2: "The Missing Phone",
             3: "Identify the Red Bag",
@@ -487,8 +485,6 @@ class MainWindow(QMainWindow):
                         source_time = f"{seconds // 60:02d}:{seconds % 60:02d}"
                 self.notebook_widget.set_source_metadata(filename, source_time)
                 self.notebook_widget.refresh_table()
-            elif index == 6:
-                self.report_widget.generate_report()
 
     def choose_evidence(self, level=None):
         if level is None:
@@ -633,13 +629,10 @@ class MainWindow(QMainWindow):
 
     def on_notebook_changed(self):
         self.dashboard.sync_progress_from_registry()
-        if self.stacked_widget.currentIndex() == 6:
-            self.report_widget.generate_report()
 
     def on_case_reset(self):
         self.dashboard.reset_progress()
         self.notebook_widget.refresh_table()
-        self.report_widget.generate_report()
 
     def on_frame_ready(self, frame, fps, frame_number, frame_count, source_generation):
         if self.worker:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import numpy as np
 from pathlib import Path
 from PySide6.QtCore import Qt, Signal
@@ -109,6 +110,7 @@ class Lab1ImageWidget(LabWidget):
         self.enhanced_frame = None  # retained as an alias for existing app integrations
         self.evidence_name = ""
         self.level_module = None
+        self._last_record_signature = None
         super().__init__("Sight Repair", parent)
 
     def setup_ui(self):
@@ -470,8 +472,21 @@ class Lab1ImageWidget(LabWidget):
         if self.raw_evidence_frame is None or self.processed_frame is None:
             self.log_message.emit("Load and process an image before recording a result.", "warning")
             return
+        effect = self.effect_selector.currentText()
+        parameters = {
+            "clahe_clip_limit": self.clahe_parameter_slider.value() / 10.0,
+            "threshold_value": self.threshold_parameter_slider.value(),
+        }
+        signature = hashlib.sha256(
+            self.processed_frame.tobytes()
+            + repr((self.evidence_name, effect, parameters, self.roi_region)).encode("utf-8")
+        ).hexdigest()
+        if signature == self._last_record_signature:
+            self.log_message.emit("This processed result is already in the Evidence Notebook.", "info")
+            return
+        output_name = f"{Path(self.evidence_name).stem or 'image'}_{signature[:12]}_processed.png"
         try:
-            output_path = save_image(1, "processed_timestamp_view.png", self.processed_frame)
+            output_path = save_image(1, output_name, self.processed_frame)
         except (OSError, ValueError) as exc:
             self.log_message.emit(f"Could not save the processed result: {exc}", "error")
             return
@@ -480,12 +495,7 @@ class Lab1ImageWidget(LabWidget):
             if self.roi_region
             else " Full image processed without ROI cropping."
         )
-        effect = self.effect_selector.currentText()
-        parameters = {
-            "clahe_clip_limit": self.clahe_parameter_slider.value() / 10.0,
-            "threshold_value": self.threshold_parameter_slider.value(),
-        }
-        registry.add(EvidenceEntry(
+        saved = registry.add(EvidenceEntry(
             module="Level 1: Sight Repair", kind="image_processing",
             value={"effect": effect, "roi_region": self.roi_region, **parameters},
             technique=f"OpenCV {effect}" + (f" (clip limit {parameters['clahe_clip_limit']:.1f})" if effect == "CLAHE" else f" (threshold {parameters['threshold_value']})" if effect == "Threshold" else ""),
@@ -496,6 +506,10 @@ class Lab1ImageWidget(LabWidget):
             unresolved_question="Which details/digits are supported by the actual image?",
             limitation="Enhancement can improve visibility but cannot restore detail absent from the source; no details are inferred by the application.",
         ))
+        if not saved:
+            self.log_message.emit(registry.persistence_error or "Could not save the result to the Evidence Notebook.", "error")
+            return
+        self._last_record_signature = signature
         self.level_completed.emit("Eyes Online")
         self.log_message.emit(f"Level 1 result recorded · {output_path}", "success")
 
@@ -506,6 +520,7 @@ class Lab1ImageWidget(LabWidget):
         self.processed_frame = None
         self.enhanced_frame = None
         self.evidence_name = ""
+        self._last_record_signature = None
         self.canvas_orig.setText("Upload a CCTV image to begin.")
         self.canvas_proc.setText("Select an effect to see the processed image.")
         self.roi_processed_canvas.setText("Enable ROI Crop and enter X, Y, width, and height.")

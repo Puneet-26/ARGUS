@@ -182,10 +182,11 @@ class DetectionWorker(QThread):
     def _weights_path() -> str:
         import os
 
+        project_root = Path(__file__).resolve().parents[3]
         configured = os.environ.get("ARGUS_YOLO_WEIGHTS", "").strip()
         if configured:
-            return str(Path(configured).expanduser())
-        project_root = Path(__file__).resolve().parents[3]
+            path = Path(configured).expanduser()
+            return str(path if path.is_absolute() else project_root / path)
         custom = project_root / "assets" / "models" / "custom" / "best.pt"
         bundled = project_root / "assets" / "models" / "yolo11n.pt"
         if custom.is_file():
@@ -955,7 +956,7 @@ class Lab2DetectionWidget(LabWidget):
         except (OSError, ValueError) as exc:
             self.log_message.emit(f"Could not save YOLO output: {exc}", "error")
             return
-        registry.add(EvidenceEntry(
+        saved = registry.add(EvidenceEntry(
             module="Level 2: The Missing Phone",
             kind="detection",
             value={
@@ -982,6 +983,9 @@ class Lab2DetectionWidget(LabWidget):
             unresolved_question="Which visible objects does this model miss or label inconsistently across the selected frames?",
             limitation="Predictions cover model-supported classes only. A missed detection does not prove absence; boxes do not track object identity across frames or identify people.",
         ))
+        if not saved:
+            self.log_message.emit(registry.persistence_error or "Could not save the detection to the Evidence Notebook.", "error")
+            return
         self.level_completed.emit("Object Detection")
         self.log_message.emit(f"Actual YOLO result recorded · {output_path}", "success")
 

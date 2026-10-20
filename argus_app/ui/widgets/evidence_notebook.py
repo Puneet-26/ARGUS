@@ -1,5 +1,6 @@
-"""Compact evidence list and optional investigator note form."""
+"""Evidence list, record details, and investigator note form."""
 
+import json
 from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal
@@ -22,13 +23,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from evidence.registry import EvidenceEntry, registry
 from evidence.labels import display_module_label
+from evidence.registry import EvidenceEntry, registry
 from ui.style import COLORS
 
 
 class EvidenceNotebookWidget(QWidget):
-    """Show observations once and keep optional note entry out of the way."""
+    """A concise evidence list with a full detail view for the selected record."""
 
     log_message = Signal(str, str)
     entries_changed = Signal()
@@ -43,7 +44,7 @@ class EvidenceNotebookWidget(QWidget):
     def setup_ui(self):
         root = QVBoxLayout(self)
         root.setContentsMargins(8, 8, 8, 8)
-        root.setSpacing(10)
+        root.setSpacing(8)
 
         header = QHBoxLayout()
         title = QLabel("Evidence Notebook")
@@ -53,13 +54,21 @@ class EvidenceNotebookWidget(QWidget):
         self.storage_status.setObjectName("mutedLabel")
         self.storage_status.setToolTip(str(registry.storage_path))
         header.addWidget(self.storage_status, 1)
-        export_btn = QPushButton("Export JSON…")
-        export_btn.clicked.connect(self.export_notebook)
-        header.addWidget(export_btn)
-        clear_btn = QPushButton("Clear notebook")
-        clear_btn.clicked.connect(self.clear_all)
-        header.addWidget(clear_btn)
         root.addLayout(header)
+
+        actions = QHBoxLayout()
+        actions.addStretch(1)
+        self.delete_button = QPushButton("Delete selected")
+        self.delete_button.setEnabled(False)
+        self.delete_button.clicked.connect(self.delete_selected)
+        actions.addWidget(self.delete_button)
+        export_button = QPushButton("Export JSON…")
+        export_button.clicked.connect(self.export_notebook)
+        actions.addWidget(export_button)
+        clear_button = QPushButton("Clear notebook")
+        clear_button.clicked.connect(self.clear_all)
+        actions.addWidget(clear_button)
+        root.addLayout(actions)
 
         self.add_note_toggle = QToolButton()
         self.add_note_toggle.setText("Add investigator note  ▸")
@@ -67,17 +76,56 @@ class EvidenceNotebookWidget(QWidget):
         self.add_note_toggle.setToolButtonStyle(Qt.ToolButtonTextOnly)
         self.add_note_toggle.toggled.connect(self._toggle_note_form)
         root.addWidget(self.add_note_toggle, 0, Qt.AlignLeft)
+        self._build_note_form(root)
 
+        self.empty_state = QLabel(
+            "No evidence recorded yet. Record a result from a level or add an investigator note."
+        )
+        self.empty_state.setWordWrap(True)
+        self.empty_state.setObjectName("mutedLabel")
+        root.addWidget(self.empty_state)
+
+        self.table = QTableWidget(0, 5)
+        self.table.setHorizontalHeaderLabels(["ID", "Level / source", "Finding", "Method", "Uncertainty"])
+        header = self.table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.Interactive)
+        header.setSectionResizeMode(1, QHeaderView.Interactive)
+        header.setSectionResizeMode(2, QHeaderView.Stretch)
+        header.setSectionResizeMode(3, QHeaderView.Interactive)
+        header.setSectionResizeMode(4, QHeaderView.Interactive)
+        self.table.setColumnWidth(0, 58)
+        self.table.setColumnWidth(1, 180)
+        self.table.setColumnWidth(3, 190)
+        self.table.setColumnWidth(4, 105)
+        self.table.setWordWrap(True)
+        self.table.setAlternatingRowColors(True)
+        self.table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.table.setSelectionMode(QTableWidget.SingleSelection)
+        self.table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.table.itemSelectionChanged.connect(self._show_selected_details)
+        root.addWidget(self.table, 3)
+
+        details_heading = QLabel("Selected evidence details")
+        details_heading.setObjectName("sectionHeading")
+        root.addWidget(details_heading)
+        self.details = QTextEdit()
+        self.details.setReadOnly(True)
+        self.details.setPlaceholderText("Select an entry to inspect its full observation and supporting details.")
+        self.details.setMinimumHeight(125)
+        root.addWidget(self.details, 2)
+
+    def _build_note_form(self, root):
         self.note_form = QFrame()
         self.note_form.setObjectName("summaryCard")
         form = QGridLayout(self.note_form)
         form.setContentsMargins(10, 8, 10, 8)
         form.setHorizontalSpacing(8)
         form.setVerticalSpacing(6)
+
         self.module_combo = QComboBox()
         self.module_combo.addItems([
             "Level 1: Sight Repair", "Level 2: The Missing Phone", "Level 3: Identify the Red Bag",
-            "Level 4: Track the Red Bag", "E-05: Purge and Session Records", "General Evidence",
+            "Level 4: Track the Red Bag", "General Evidence",
         ])
         self.uncertainty_combo = QComboBox()
         self.uncertainty_combo.addItems(["Low", "Medium", "High"])
@@ -85,14 +133,15 @@ class EvidenceNotebookWidget(QWidget):
         self.technique_edit.setPlaceholderText("Method used")
         self.obs_edit = QTextEdit()
         self.obs_edit.setPlaceholderText("Direct observation")
-        self.obs_edit.setMaximumHeight(72)
+        self.obs_edit.setMaximumHeight(64)
         self.interp_edit = QTextEdit()
         self.interp_edit.setPlaceholderText("Interpretation (optional)")
-        self.interp_edit.setMaximumHeight(72)
+        self.interp_edit.setMaximumHeight(64)
         self.limitation_edit = QLineEdit()
         self.limitation_edit.setPlaceholderText("What this result cannot establish")
         self.question_edit = QLineEdit()
         self.question_edit.setPlaceholderText("Unresolved question (optional)")
+
         form.addWidget(QLabel("Level"), 0, 0)
         form.addWidget(self.module_combo, 0, 1)
         form.addWidget(QLabel("Uncertainty"), 0, 2)
@@ -106,30 +155,12 @@ class EvidenceNotebookWidget(QWidget):
         self.source_label = QLabel("Source: no evidence selected")
         self.source_label.setObjectName("mutedLabel")
         form.addWidget(self.source_label, 4, 0, 1, 3)
-        save = QPushButton("Save note")
-        save.setObjectName("primaryButton")
-        save.clicked.connect(self.add_entry_from_form)
-        form.addWidget(save, 4, 3, alignment=Qt.AlignRight)
+        save_button = QPushButton("Save note")
+        save_button.setObjectName("primaryButton")
+        save_button.clicked.connect(self.add_entry_from_form)
+        form.addWidget(save_button, 4, 3, alignment=Qt.AlignRight)
         self.note_form.setVisible(False)
         root.addWidget(self.note_form)
-
-        self.empty_state = QLabel("No evidence recorded yet. Use a level's Record result button or add an investigator note.")
-        self.empty_state.setWordWrap(True)
-        self.empty_state.setObjectName("mutedLabel")
-        root.addWidget(self.empty_state)
-        self.table = QTableWidget(0, 6)
-        self.table.setHorizontalHeaderLabels(["ID", "Level / source", "Observation and method", "Interpretation", "Uncertainty", ""])
-        header = self.table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(2, QHeaderView.Stretch)
-        header.setSectionResizeMode(3, QHeaderView.Stretch)
-        header.setSectionResizeMode(4, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(5, QHeaderView.ResizeToContents)
-        self.table.setWordWrap(True)
-        self.table.setAlternatingRowColors(True)
-        self.table.setMinimumWidth(0)
-        root.addWidget(self.table, 1)
 
     def _toggle_note_form(self, expanded):
         self.note_form.setVisible(expanded)
@@ -141,6 +172,10 @@ class EvidenceNotebookWidget(QWidget):
         suffix = f" · {self.source_timestamp}" if self.source_timestamp else ""
         self.source_label.setText(f"Source: {self.source_filename or 'no evidence selected'}{suffix}")
 
+    @staticmethod
+    def _entry_finding(entry):
+        return str(entry.observation or entry.description or entry.value or "No observation recorded")
+
     def refresh_table(self):
         entries = registry.all()
         if registry.persistence_error:
@@ -148,28 +183,65 @@ class EvidenceNotebookWidget(QWidget):
             self.storage_status.setStyleSheet(f"color: {COLORS['alert']};")
             self.storage_status.setToolTip(registry.persistence_error)
         else:
-            self.storage_status.setText(f"{len(entries)} saved entr{'y' if len(entries) == 1 else 'ies'}")
+            self.storage_status.setText(f"{len(entries)} entr{'y' if len(entries) == 1 else 'ies'} · saved")
             self.storage_status.setStyleSheet(f"color: {COLORS['text_secondary']};")
             self.storage_status.setToolTip(str(registry.storage_path))
+
         self.table.setRowCount(len(entries))
         self.empty_state.setVisible(not entries)
         self.table.setVisible(bool(entries))
         for row, entry in enumerate(entries):
-            source = entry.source_filename or display_module_label(entry.module)
-            method = entry.technique or entry.kind
-            observed = entry.observation or entry.description or str(entry.value)
-            values = [entry.evidence_id, source, f"{observed}\nMethod: {method}", entry.interpretation or "Pending interpretation", entry.uncertainty]
-            details = f"{entry.timestamp}\n{display_module_label(entry.module)}\n{method}\nSource: {entry.source_path or entry.source_filename}\nSource time: {entry.source_timestamp}\nFrame: {entry.frame_number}\nOutput: {entry.output_path}\nLimitation: {entry.limitation}\nUnresolved: {entry.unresolved_question}\nCompletion: {entry.completion_mode}"
+            source = entry.source_filename or display_module_label(entry.module) or entry.module
+            finding = self._entry_finding(entry)
+            method = entry.technique or entry.kind or "—"
+            values = (entry.evidence_id or "—", source, finding, method, entry.uncertainty or "—")
             for column, value in enumerate(values):
                 item = QTableWidgetItem(str(value))
-                item.setToolTip(details)
-                item.setFlags(item.flags() & ~Qt.ItemIsEditable)
+                item.setToolTip(str(value))
                 self.table.setItem(row, column, item)
-            delete = QPushButton("Delete")
-            delete.setMaximumWidth(64)
-            delete.clicked.connect(lambda _checked=False, index=row: self.delete_entry(index))
-            self.table.setCellWidget(row, 5, delete)
-            self.table.setRowHeight(row, 54)
+            self.table.setRowHeight(row, 42)
+
+        if entries:
+            self.table.selectRow(len(entries) - 1)
+            self.table.scrollToBottom()
+        else:
+            self.delete_button.setEnabled(False)
+            self.details.clear()
+
+    def _show_selected_details(self):
+        row = self.table.currentRow()
+        entries = registry.all()
+        self.delete_button.setEnabled(0 <= row < len(entries))
+        if not 0 <= row < len(entries):
+            self.details.clear()
+            return
+        entry = entries[row]
+        artifact_path = Path(entry.output_path) if entry.output_path else None
+        if artifact_path is not None and not artifact_path.is_absolute():
+            artifact_path = Path(__file__).resolve().parents[3] / artifact_path
+        artifact_status = (
+            "Available" if artifact_path and artifact_path.is_file()
+            else "Missing" if artifact_path else "Not recorded"
+        )
+        details = [
+            f"{entry.evidence_id or 'Unnumbered'} · {display_module_label(entry.module) or entry.module}",
+            f"Observation: {self._entry_finding(entry)}",
+            f"Method: {entry.technique or entry.kind or 'Not recorded'}",
+            f"Interpretation: {entry.interpretation or 'Not recorded'}",
+            f"Uncertainty: {entry.uncertainty or 'Not recorded'}",
+            f"Source file: {entry.source_filename or 'Not recorded'}",
+            f"Source path: {entry.source_path or 'Not recorded'}",
+            f"Source time: {entry.source_timestamp or 'Not recorded'}",
+            f"Frame: {entry.frame_number if entry.frame_number is not None else 'Not recorded'}",
+            f"Saved output: {entry.output_path or 'Not recorded'}",
+            f"Output file status: {artifact_status}",
+            f"Limitation: {entry.limitation or 'Not recorded'}",
+            f"Unresolved question: {entry.unresolved_question or 'Not recorded'}",
+            f"Completion: {entry.completion_mode or 'Not recorded'}",
+            f"Recorded: {entry.timestamp or 'Not recorded'}",
+            f"Value: {json.dumps(entry.value, ensure_ascii=False, indent=2, default=str)}",
+        ]
+        self.details.setPlainText("\n".join(details))
 
     def add_entry_from_form(self):
         technique = self.technique_edit.text().strip()
@@ -179,10 +251,9 @@ class EvidenceNotebookWidget(QWidget):
         if not observation or not technique or not limitation:
             self.log_message.emit("Enter a method, direct observation, and limitation before saving.", "warning")
             return
+
         module = self.module_combo.currentText()
-        source_filename = self.source_filename
-        source_path = ""
-        registry.add(EvidenceEntry(
+        saved = registry.add(EvidenceEntry(
             module=module,
             kind="manual_note",
             value=observation,
@@ -190,13 +261,16 @@ class EvidenceNotebookWidget(QWidget):
             observation=observation,
             interpretation=interpretation or "Under review",
             uncertainty=self.uncertainty_combo.currentText(),
-            source_filename=source_filename,
-            source_path=source_path,
+            source_filename=self.source_filename,
             source_timestamp=self.source_timestamp,
             unresolved_question=self.question_edit.text().strip(),
-            evidence_id="E-05" if module.startswith("E-05") else "",
             limitation=limitation,
         ))
+        if not saved:
+            self.refresh_table()
+            self.log_message.emit(registry.persistence_error or "Could not save investigator note.", "error")
+            return
+
         self.refresh_table()
         self.entries_changed.emit()
         self.technique_edit.clear()
@@ -207,29 +281,52 @@ class EvidenceNotebookWidget(QWidget):
         self.add_note_toggle.setChecked(False)
         self.log_message.emit("Investigator note saved.", "success")
 
-    def delete_entry(self, index):
-        registry.remove(index)
+    def delete_selected(self):
+        index = self.table.currentRow()
+        entries = registry.all()
+        if not 0 <= index < len(entries):
+            return
+        entry = entries[index]
+        answer = QMessageBox.question(
+            self, "Delete evidence entry",
+            f"Permanently delete {entry.evidence_id or 'this evidence entry'}?",
+            QMessageBox.Yes | QMessageBox.Cancel, QMessageBox.Cancel,
+        )
+        if answer != QMessageBox.Yes:
+            return
+        if not registry.remove(index):
+            self.refresh_table()
+            self.log_message.emit(registry.persistence_error or "Could not delete the evidence entry.", "error")
+            return
         self.refresh_table()
         self.entries_changed.emit()
         self.log_message.emit("Evidence entry deleted.", "info")
 
     def clear_all(self):
+        if not registry.all():
+            return
         answer = QMessageBox.question(
             self, "Clear Evidence Notebook", "Delete every recorded evidence entry? This cannot be undone.",
             QMessageBox.Yes | QMessageBox.Cancel, QMessageBox.Cancel,
         )
         if answer != QMessageBox.Yes:
             return
-        registry.clear()
+        if not registry.clear():
+            self.refresh_table()
+            self.log_message.emit(registry.persistence_error or "Could not clear the notebook.", "error")
+            return
         self.refresh_table()
         self.entries_changed.emit()
         self.log_message.emit("Evidence Notebook cleared.", "warning")
 
     def export_notebook(self):
-        path, _ = QFileDialog.getSaveFileName(self, "Export Evidence Notebook", "evidence_notebook.json", "JSON Files (*.json)")
-        if path:
-            try:
-                registry.save(Path(path))
-                self.log_message.emit(f"Notebook exported to {path}", "success")
-            except Exception as exc:
-                self.log_message.emit(f"Notebook export failed: {exc}", "error")
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export Evidence Notebook", "evidence_notebook.json", "JSON Files (*.json)"
+        )
+        if not path:
+            return
+        try:
+            registry.save(Path(path))
+            self.log_message.emit(f"Notebook exported to {path}", "success")
+        except (OSError, TypeError, ValueError) as exc:
+            self.log_message.emit(f"Notebook export failed: {exc}", "error")

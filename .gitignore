@@ -11,5 +11,6 @@ Thumbs.db
 build/
 dist/
 *.pt
+!assets/models/yolo11n.pt
 outputs/**
 !outputs/**/.gitkeep

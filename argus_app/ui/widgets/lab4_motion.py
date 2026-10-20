@@ -477,7 +477,7 @@ class Lab4MotionWidget(LabWidget):
             return
         centroid = self.last_results.get("centroid")
         color = self.target_color
-        registry.add(EvidenceEntry(
+        saved = registry.add(EvidenceEntry(
             module="Level 4: Track the Red Bag",
             kind="video_tracking",
             value={"candidate_count": self.last_results.get("candidates", 0), "centroid": centroid, "segments": self.last_results.get("red_segments", []), "line_crossings": cross_count, "entrance_line_x_fraction": self.exit_line_fraction, "crossing_direction": self.crossing_direction, "minimum_contour_area": self.min_area, "max_centroid_jump_fraction": self.max_step_fraction, "target_color": color},
@@ -494,6 +494,9 @@ class Lab4MotionWidget(LabWidget):
             unresolved_question="Does the available clip and supporting evidence establish that the same physical object crossed?",
             limitation="HSV candidates can be distractors; a skipped or occluded detection breaks centroid continuity, and clip time is not wall-clock time without a verified offset.",
         ))
+        if not saved:
+            self.log_message.emit(registry.persistence_error or "Could not save tracking to the Evidence Notebook.", "error")
+            return
         self.level_completed.emit("The Final Clue")
         self.log_message.emit(f"{color} tracking observation recorded in the Evidence Notebook.", "success")
 

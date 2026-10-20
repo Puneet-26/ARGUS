@@ -66,7 +66,7 @@ class EvidenceRegistry:
             base = pathlib.Path(os.environ.get("XDG_DATA_HOME", pathlib.Path.home() / ".local" / "share"))
         return base / "ARGUS" / "evidence_notebook.json"
 
-    def _persist(self) -> None:
+    def _persist(self) -> bool:
         """Persist the current notebook without leaving a partial JSON file."""
         temporary = None
         try:
@@ -80,6 +80,7 @@ class EvidenceRegistry:
                 stream.write("\n")
             temporary.replace(self.storage_path)
             self.persistence_error = ""
+            return True
         except (OSError, TypeError, ValueError) as exc:
             self.persistence_error = f"Could not save the notebook to {self.storage_path}: {exc}"
             if temporary is not None:
@@ -87,22 +88,41 @@ class EvidenceRegistry:
                     temporary.unlink(missing_ok=True)
                 except OSError:
                     pass
+            return False
 
-    def add(self, entry: EvidenceEntry) -> None:
-        """Add an evidence entry."""
+    def add(self, entry: EvidenceEntry) -> bool:
+        """Add and persist one entry, rolling back in memory if persistence fails."""
+        if not isinstance(entry, EvidenceEntry):
+            raise TypeError("Expected an EvidenceEntry instance.")
+        if (
+            not isinstance(entry.module, str) or not entry.module.strip()
+            or not isinstance(entry.kind, str) or not entry.kind.strip()
+        ):
+            raise ValueError("Evidence entries need a module and kind.")
         self._entries.append(entry)
-        self._persist()
+        if self._persist():
+            return True
+        self._entries.pop()
+        return False
 
-    def remove(self, index: int) -> None:
-        """Remove an entry by index."""
+    def remove(self, index: int) -> bool:
+        """Remove an entry, restoring it if the updated notebook cannot be saved."""
         if 0 <= index < len(self._entries):
-            self._entries.pop(index)
-            self._persist()
+            entry = self._entries.pop(index)
+            if self._persist():
+                return True
+            self._entries.insert(index, entry)
+            return False
+        return False
 
-    def clear(self) -> None:
-        """Remove all entries."""
-        self._entries.clear()
-        self._persist()
+    def clear(self) -> bool:
+        """Clear all entries, restoring them if the empty notebook cannot be saved."""
+        previous_entries = self._entries
+        self._entries = []
+        if self._persist():
+            return True
+        self._entries = previous_entries
+        return False
 
     def all(self) -> List[EvidenceEntry]:
         """Return all entries (copy)."""

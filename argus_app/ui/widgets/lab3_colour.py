@@ -462,7 +462,7 @@ class Lab3ColourWidget(LabWidget):
             return
         candidate_data = self.last_results.get("candidate_regions", [])
         color_name = self.color_preset_combo.currentText()
-        registry.add(EvidenceEntry(
+        saved = registry.add(EvidenceEntry(
             module="Level 3: Identify the Red Bag", kind="color_segmentation",
             value={"candidate_regions": candidate_data, "outputs": [candidate_output, mask_output], "parameters": self.last_results.get("parameters", {}), "media_kind": self.media_kind, "frame_number": result_frame_number, "fps": self.video_fps or None, "timestamp_seconds": frame_timestamp},
             technique=f"BGR-to-HSV, {color_name} color range segmentation, morphology, area-filtered contours, and candidate overlay",
@@ -473,5 +473,8 @@ class Lab3ColourWidget(LabWidget):
             unresolved_question="Which candidate, if any, matches the object based on separate visual evidence?",
             limitation=f"Other {color_name.lower()} objects may be candidates. HSV segmentation does not establish object identity or ownership.",
         ))
+        if not saved:
+            self.log_message.emit(registry.persistence_error or "Could not save segmentation to the Evidence Notebook.", "error")
+            return
         self.level_completed.emit("The Red Bag")
         self.log_message.emit(f"{color_name} region result recorded · {candidate_output} and {mask_output}", "success")

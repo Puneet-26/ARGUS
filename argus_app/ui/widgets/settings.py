@@ -73,6 +73,8 @@ class SettingsWidget(QWidget):
         )
         if answer != QMessageBox.Yes:
             return
-        registry.clear()
+        if not registry.clear():
+            self.log_message.emit(registry.persistence_error or "Could not clear case data.", "error")
+            return
         self.case_reset.emit()
         self.log_message.emit("Case data cleared. Notebook and dashboard progress were reset.", "warning")
