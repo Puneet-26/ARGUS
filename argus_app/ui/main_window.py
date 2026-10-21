@@ -166,10 +166,10 @@ class MainWindow(QMainWindow):
         "Settings",
     ]
     PAGE_TITLES = {
-        1: ("Level 1", "", ""),
-        2: ("Level 2", "", ""),
-        3: ("Level 3", "", ""),
-        4: ("Level 4", "", ""),
+        1: ("LEVEL 01 · SIGHT REPAIR", "Recover the timestamp", "Use OpenCV to inspect a dark CCTV image. The frame time is an observation, not proof of the incident time."),
+        2: ("LEVEL 02 · THE MISSING PHONE", "Reconstruct the Lab Scene", "Run pretrained YOLO object detection on actual image or video evidence. Predictions cover supported classes and do not establish object identity or an event."),
+        3: ("LEVEL 03 · IDENTIFY THE RED BAG", "Find the Red Bag", "Use HSV colour segmentation, wrapped red masking, noise removal, and contour detection to inspect candidate regions."),
+        4: ("LEVEL 04 · TRACK THE RED BAG", "Reconstruct the Bag's Route", "Process video frames, track red-region centroids, visualise trajectory segments, and check exit-line crossings. Red candidates do not establish identity."),
     }
     LEVEL_FILES = {
         1: ("level_codes/level1.py", "python level_codes/level1.py", "outputs/level1/"),
@@ -310,14 +310,12 @@ class MainWindow(QMainWindow):
         )
         title_label = QLabel(title)
         title_label.setObjectName("pageTitle")
+        summary_label = QLabel(summary)
+        summary_label.setObjectName("pageSummary")
+        summary_label.setWordWrap(True)
         header_layout.addWidget(index_label)
-        if title:
-            header_layout.addWidget(title_label)
-        if summary:
-            summary_label = QLabel(summary)
-            summary_label.setObjectName("pageSummary")
-            summary_label.setWordWrap(True)
-            header_layout.addWidget(summary_label)
+        header_layout.addWidget(title_label)
+        header_layout.addWidget(summary_label)
         layout.addWidget(header)
         starter_path, command, output_path = self.LEVEL_FILES[level]
         guide = QFrame()
@@ -374,7 +372,13 @@ class MainWindow(QMainWindow):
             return
         self.dashboard.sync_progress_from_registry()
         self.notebook_widget.refresh_table()
-        self.show_status_message(f"Level {level} checkpoint recorded. Continue with the next investigation step.", "info")
+        level_name = {
+            2: "The Missing Phone",
+            3: "Identify the Red Bag",
+            4: "Track the Red Bag",
+        }.get(level)
+        label = f"Level {level}: {level_name}" if level_name else f"Level {level}"
+        self.show_status_message(f"{label} checkpoint recorded. Continue with the next investigation step.", "info")
 
     def open_workshop_folder(self, level):
         folder = Path(__file__).resolve().parents[2] / "level_codes"
@@ -616,7 +620,11 @@ class MainWindow(QMainWindow):
     def on_level_completed(self, level_name: str):
         self.dashboard.sync_progress_from_registry()
         self.notebook_widget.refresh_table()
-        display_name = {"Eyes Online": "Level 1", "Object Detection": "Level 2", "The Red Bag": "Level 3", "The Final Clue": "Level 4"}.get(level_name, level_name)
+        display_name = {
+            "Object Detection": "Level 2: The Missing Phone",
+            "The Red Bag": "Level 3: Identify the Red Bag",
+            "The Final Clue": "Level 4: Track the Red Bag",
+        }.get(level_name, level_name)
         self.show_status_message(f"{display_name} finding recorded in the Evidence Notebook.", "success")
 
     def on_notebook_changed(self):
