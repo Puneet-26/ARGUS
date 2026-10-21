@@ -65,10 +65,10 @@ class DashboardWidget(QWidget):
     level_selected = Signal(str)
 
     STAGES = [
-        (1, "Recover the timestamp", "Eyes Online", ""),
-        (2, "The Missing Phone", "Object Detection", ""),
-        (3, "Identify the Red Bag", "The Red Bag", ""),
-        (4, "Track the Red Bag", "The Final Clue", ""),
+        (1, "Level 1", "Eyes Online", ""),
+        (2, "Level 2", "Object Detection", ""),
+        (3, "Level 3", "The Red Bag", ""),
+        (4, "Level 4", "The Final Clue", ""),
     ]
 
     def __init__(self, parent=None):
